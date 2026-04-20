@@ -1,0 +1,47 @@
+NOTE: ── 01 BASICS ─────────────────────────────────────────────────────────────
+NOTE: Variables, data types, math, and output
+
+NOTE: --- Variables ---
+MAKE name BE "loopy"
+MAKE age BE 20
+MAKE height BE 5.9
+MAKE active BE YEAH
+MAKE score BE NOTHING
+
+SHOW name
+SHOW age
+SHOW active
+
+NOTE: --- Math ---
+MAKE x BE 10
+MAKE y BE 3
+
+SHOW x PLUS y          NOTE: 13
+SHOW x MINUS y         NOTE: 7
+SHOW x TIMES y         NOTE: 30
+SHOW x DIVIDED BY y    NOTE: 3.333...
+SHOW x MOD y           NOTE: 1  (remainder)
+SHOW x POWER 2         NOTE: 100
+
+NOTE: --- Math builtins ---
+SHOW FLOOR OF 3.7      NOTE: 3
+SHOW CEIL OF 3.2       NOTE: 4
+SHOW ROUND OF 3.5      NOTE: 4
+SHOW SQRT OF 16        NOTE: 4
+SHOW ABS OF -42        NOTE: 42
+
+NOTE: --- Combine (smart concat) ---
+COMBINE "hello, " AND name THEN SHOW IT
+COMBINE x AND y THEN KEEP IT AS total
+SHOW total
+
+NOTE: --- Type checking ---
+SHOW KIND OF name      NOTE: text
+SHOW KIND OF age       NOTE: number
+SHOW KIND OF active    NOTE: bool
+SHOW KIND OF score     NOTE: nothing
+
+NOTE: --- Booleans ---
+SHOW YEAH
+SHOW NAH
+SHOW NOTHING

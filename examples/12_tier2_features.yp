@@ -1,0 +1,113 @@
+NOTE: ── 12 TIER-2 FEATURES ──────────────────────────────────────────────────
+
+NOTE: --- MAP ---
+MAKE nums BE [1, 2, 3, 4, 5]
+
+TEACH double USING x { GIVE BACK x TIMES 2 }
+MAKE doubled BE MAP nums USING double
+SHOW doubled
+
+NOTE: inline with lambda-style named function
+TEACH square USING x { GIVE BACK x TIMES x }
+MAKE squares BE MAP nums USING square
+SHOW squares
+
+NOTE: --- FILTER ---
+TEACH is_even USING x { GIVE BACK x MOD 2 IS 0 }
+MAKE evens BE FILTER nums WHERE is_even
+SHOW evens
+
+TEACH above_three USING x { GIVE BACK x IS MORE THAN 3 }
+MAKE big BE FILTER nums WHERE above_three
+SHOW big
+
+NOTE: --- REDUCE ---
+TEACH add USING acc, x { GIVE BACK acc PLUS x }
+MAKE total BE REDUCE nums USING add START 0
+SHOW $"sum: {total}"
+
+TEACH multiply USING acc, x { GIVE BACK acc TIMES x }
+MAKE product BE REDUCE nums USING multiply START 1
+SHOW $"product: {product}"
+
+NOTE: --- PIPE (chain operations) ---
+MAKE result BE nums PIPE FILTER WHERE is_even PIPE MAP USING square
+SHOW result
+
+NOTE: full pipeline: filter odds, double them, sum
+TEACH is_odd USING x { GIVE BACK x MOD 2 IS NOT 0 }
+MAKE odd_sum BE nums PIPE FILTER WHERE is_odd PIPE MAP USING double PIPE REDUCE USING add START 0
+SHOW $"sum of doubled odds: {odd_sum}"
+
+NOTE: --- EXISTS ---
+MAKE city BE "Atlanta"
+CHECK IF city EXISTS {
+    SHOW $"city is defined: {city}"
+}
+CHECK IF country EXISTS {
+    SHOW "country defined"
+} OTHERWISE {
+    SHOW "country is not defined"
+}
+
+NOTE: --- REPEAT ---
+SHOW "counting:"
+REPEAT 3 {
+    SHOW "tick"
+}
+
+SHOW "indexed:"
+REPEAT 5 AS i {
+    SHOW i
+}
+
+NOTE: --- Safe GET with ELSE fallback ---
+MAKE book BE {title: "Dragon Fire", words: 312}
+MAKE title BE book GET title ELSE "untitled"
+MAKE author BE book GET author ELSE "unknown"
+SHOW $"title: {title}  author: {author}"
+
+NOTE: --- Multi-return ---
+TEACH min_max USING arr {
+    MAKE sorted_arr BE [...arr]
+    SORT sorted_arr
+    GIVE BACK FIRST OF sorted_arr, LAST OF sorted_arr
+}
+
+MAKE scores BE [88, 42, 95, 67, 73]
+MAKE [lo, hi] FROM CALL min_max WITH scores
+SHOW $"min={lo}  max={hi}"
+
+NOTE: --- Combining all of it: story catalog pipeline ---
+MAKE catalog BE [
+    {title: "Dragon Fire",    category: "Fantasy", words: 401},
+    {title: "Sara's Garden",  category: "Nature",  words: 189},
+    {title: "Moonlit Path",   category: "Fantasy", words: 267},
+    {title: "Ocean Deep",     category: "Nature",  words: 512},
+    {title: "The Little Fox", category: "Animals", words: 145}
+]
+
+TEACH is_fantasy USING s { GIVE BACK s GET category IS "Fantasy" }
+TEACH get_words  USING s { GIVE BACK s GET words }
+TEACH word_add   USING acc, x { GIVE BACK acc PLUS x }
+
+MAKE fantasy_words BE catalog
+    PIPE FILTER WHERE is_fantasy
+    PIPE MAP USING get_words
+    PIPE REDUCE USING word_add START 0
+
+SHOW $"Total fantasy words: {fantasy_words}"
+
+NOTE: build formatted list with MAP
+TEACH format_entry USING s {
+    MAKE t BE s GET title
+    MAKE pad BE " " TIMES (20 MINUS LENGTH OF t)
+    GIVE BACK t AND pad AND s GET words AND " words"
+}
+
+MAKE lines BE MAP catalog USING format_entry
+FOR EACH line IN lines {
+    SHOW "  " AND line
+}
+
+SHOW "done"

@@ -1,0 +1,53 @@
+NOTE: ── 07 ERROR HANDLING ───────────────────────────────────────────────────────
+
+NOTE: --- TRY / CATCH ---
+TRY {
+    THROW "something went wrong"
+} CATCH err {
+    COMBINE "caught: " AND err THEN SHOW IT
+}
+
+NOTE: --- Catching a runtime error ---
+TRY {
+    MAKE x BE 10 DIVIDED BY 0
+} CATCH err {
+    COMBINE "math error: " AND err THEN SHOW IT
+}
+
+NOTE: --- Validation with THROW ---
+TEACH safe_divide USING a, b {
+    CHECK IF b IS 0 {
+        THROW "cannot divide by zero"
+    }
+    GIVE BACK a DIVIDED BY b
+}
+
+TRY {
+    SHOW CALL safe_divide WITH 10, 2    NOTE: works fine
+    SHOW CALL safe_divide WITH 5, 0     NOTE: throws
+} CATCH err {
+    COMBINE "error: " AND err THEN SHOW IT
+}
+
+NOTE: --- Custom bounds checking ---
+TEACH get_item USING arr, index {
+    MAKE too_high BE index IS AT LEAST LENGTH OF arr
+    MAKE too_low BE index IS LESS THAN 0
+    CHECK IF too_high OR too_low {
+        MAKE msg BE "index " AND index AND " out of range"
+        THROW msg
+    }
+    GIVE BACK arr AT index
+}
+
+MAKE data BE [10, 20, 30]
+
+TRY {
+    SHOW CALL get_item WITH data, 1     NOTE: 20
+    SHOW CALL get_item WITH data, 10    NOTE: throws
+} CATCH err {
+    SHOW err
+}
+
+NOTE: --- Try doesn't stop the program ---
+SHOW "program continues after error handling"

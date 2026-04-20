@@ -1,0 +1,62 @@
+NOTE: ── 05 DICTIONARIES ─────────────────────────────────────────────────────────
+
+NOTE: --- Creating dicts ---
+MAKE person BE {name: "loopy", age: 20, active: YEAH}
+
+NOTE: --- Accessing fields (GET) ---
+SHOW person GET name
+SHOW person GET age
+
+NOTE: --- Updating fields ---
+UPDATE person age TO 21
+SHOW person GET age
+
+NOTE: Also with MAKE syntax:
+MAKE person name BE "bigloopy"
+SHOW person GET name
+
+NOTE: --- HAS (check if key exists) — use a string for the key name ---
+CHECK IF HAS person "name" {
+    SHOW "has a name"
+}
+CHECK IF NOT HAS person "email" {
+    SHOW "no email set"
+}
+
+NOTE: --- KEYS and VALUES ---
+SHOW KEYS OF person
+SHOW VALUES OF person
+
+NOTE: --- Nested dicts ---
+MAKE user BE {
+    profile: {username: "loopy", level: 5},
+    settings: {darkmode: YEAH, lang: "en"}
+}
+
+SHOW user GET profile GET username
+SHOW user GET settings GET darkmode
+
+NOTE: --- Dict inside array ---
+MAKE team BE [
+    {name: "alice", role: "dev"},
+    {name: "bob",   role: "design"},
+    {name: "carol", role: "qa"}
+]
+
+FOR EACH member IN team {
+    COMBINE member GET name AND " is in " AND member GET role THEN SHOW IT
+}
+
+NOTE: --- Building a dict dynamically ---
+MAKE scores BE {}
+UPDATE scores alice TO 95
+UPDATE scores bob TO 87
+UPDATE scores carol TO 92
+
+FOR EACH key IN KEYS OF scores {
+    NOTE: use AT for dynamic key access (GET field is for known field names)
+    COMBINE key AND ": " AND scores AT key THEN SHOW IT
+}
+
+NOTE: --- Length of dict ---
+SHOW LENGTH OF scores    NOTE: 3

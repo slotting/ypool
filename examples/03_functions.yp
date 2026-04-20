@@ -1,0 +1,78 @@
+NOTE: ── 03 FUNCTIONS ───────────────────────────────────────────────────────────
+
+NOTE: --- Basic function ---
+TEACH greet USING name {
+    COMBINE "what's good, " AND name THEN SHOW IT
+}
+
+CALL greet WITH "loopy"
+
+NOTE: --- Return values ---
+TEACH add USING a, b {
+    GIVE BACK a PLUS b
+}
+
+MAKE result BE CALL add WITH 10, 5
+SHOW result
+
+NOTE: --- Check for nothing (simulating default params) ---
+TEACH say_hello USING name {
+    CHECK IF name IS NOTHING {
+        SHOW "hello, stranger"
+    } OTHERWISE {
+        COMBINE "hello, " AND name THEN SHOW IT
+    }
+}
+
+CALL say_hello WITH "loopy"
+CALL say_hello WITH NOTHING
+
+NOTE: --- Recursion: factorial ---
+TEACH factorial USING n {
+    CHECK IF n IS AT MOST 1 {
+        GIVE BACK 1
+    }
+    GIVE BACK n TIMES CALL factorial WITH (n MINUS 1)
+}
+
+SHOW CALL factorial WITH 10
+
+NOTE: --- Recursion: fibonacci (using temp vars to avoid arg ambiguity) ---
+TEACH fib USING n {
+    CHECK IF n IS AT MOST 1 {
+        GIVE BACK n
+    }
+    MAKE a BE CALL fib WITH (n MINUS 1)
+    MAKE b BE CALL fib WITH (n MINUS 2)
+    GIVE BACK a PLUS b
+}
+
+COUNT FROM 0 TO 9 AS i {
+    SHOW CALL fib WITH i
+}
+
+NOTE: --- Closures (functions that remember their scope) ---
+TEACH make_counter {
+    MAKE count BE 0
+    TEACH increment {
+        MAKE count BE count PLUS 1
+        GIVE BACK count
+    }
+    GIVE BACK increment
+}
+
+MAKE counter BE CALL make_counter
+SHOW CALL counter    NOTE: 1
+SHOW CALL counter    NOTE: 2
+SHOW CALL counter    NOTE: 3
+
+NOTE: --- Higher-order functions ---
+TEACH apply USING func, value {
+    GIVE BACK CALL func WITH value
+}
+
+TEACH double USING x {
+    GIVE BACK x TIMES 2
+}
+
+SHOW CALL apply WITH double, 7    NOTE: 14

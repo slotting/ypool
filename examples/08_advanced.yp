@@ -1,0 +1,124 @@
+NOTE: ── 08 ADVANCED ────────────────────────────────────────────────────────────
+
+NOTE: --- Closure: counter factory ---
+TEACH make_counter USING start {
+    MAKE count BE start
+    TEACH next {
+        MAKE count BE count PLUS 1
+        GIVE BACK count
+    }
+    GIVE BACK next
+}
+
+MAKE c1 BE CALL make_counter WITH 0
+MAKE c2 BE CALL make_counter WITH 100
+
+SHOW CALL c1    NOTE: 1
+SHOW CALL c1    NOTE: 2
+SHOW CALL c2    NOTE: 101
+SHOW CALL c1    NOTE: 3   (independent from c2)
+
+NOTE: --- Map (transform array) ---
+TEACH map USING arr, func {
+    MAKE result BE []
+    FOR EACH item IN arr {
+        PUSH CALL func WITH item INTO result
+    }
+    GIVE BACK result
+}
+
+TEACH double USING x { GIVE BACK x TIMES 2 }
+TEACH square USING x { GIVE BACK x POWER 2 }
+
+MAKE nums BE [1, 2, 3, 4, 5]
+SHOW CALL map WITH nums, double
+SHOW CALL map WITH nums, square
+
+NOTE: --- Filter ---
+TEACH filter USING arr, func {
+    MAKE result BE []
+    FOR EACH item IN arr {
+        CHECK IF CALL func WITH item {
+            PUSH item INTO result
+        }
+    }
+    GIVE BACK result
+}
+
+TEACH is_even USING x { GIVE BACK x MOD 2 IS 0 }
+TEACH is_odd  USING x { GIVE BACK x MOD 2 IS NOT 0 }
+
+SHOW CALL filter WITH nums, is_even
+SHOW CALL filter WITH nums, is_odd
+
+NOTE: --- Reduce ---
+TEACH reduce USING arr, func, init {
+    MAKE acc BE init
+    FOR EACH item IN arr {
+        MAKE acc BE CALL func WITH acc, item
+    }
+    GIVE BACK acc
+}
+
+TEACH add USING a, b { GIVE BACK a PLUS b }
+TEACH mul USING a, b { GIVE BACK a TIMES b }
+
+SHOW CALL reduce WITH nums, add, 0    NOTE: 15
+SHOW CALL reduce WITH nums, mul, 1    NOTE: 120
+
+NOTE: --- Flatten nested arrays ---
+TEACH flatten USING arr {
+    MAKE result BE []
+    FOR EACH item IN arr {
+        CHECK IF KIND OF item IS "array" {
+            MAKE flat BE CALL flatten WITH item
+            FOR EACH x IN flat {
+                PUSH x INTO result
+            }
+        } OTHERWISE {
+            PUSH item INTO result
+        }
+    }
+    GIVE BACK result
+}
+
+MAKE nested BE [1, [2, 3], [4, [5, 6]], 7]
+SHOW CALL flatten WITH nested    NOTE: [1, 2, 3, 4, 5, 6, 7]
+
+NOTE: --- Random number game simulation ---
+MAKE secret BE RANDOM FROM 1 TO 10
+MAKE guess BE RANDOM FROM 1 TO 10
+
+COMBINE "secret: " AND secret AND "  guess: " AND guess THEN SHOW IT
+
+CHECK IF guess IS secret {
+    SHOW "lucky guess!"
+} OTHERWISE {
+    CHECK IF guess IS LESS THAN secret {
+        SHOW "too low"
+    } OTHERWISE {
+        SHOW "too high"
+    }
+}
+
+NOTE: --- Linked list via dicts ---
+TEACH make_node USING val {
+    GIVE BACK {value: val, next: NOTHING}
+}
+
+TEACH push_front USING list, val {
+    MAKE node BE CALL make_node WITH val
+    UPDATE node next TO list
+    GIVE BACK node
+}
+
+MAKE head BE NOTHING
+MAKE head BE CALL push_front WITH head, 3
+MAKE head BE CALL push_front WITH head, 2
+MAKE head BE CALL push_front WITH head, 1
+
+MAKE curr BE head
+KEEP GOING WHILE curr IS NOT NOTHING {
+    SHOW curr GET value
+    MAKE curr BE curr GET next
+}

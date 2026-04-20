@@ -1,0 +1,107 @@
+NOTE: ── 10 FILES, JSON, DATE ──────────────────────────────────────────────────
+NOTE: The stuff you'd use when building a story app or admin panel
+
+NOTE: --- Date and time ---
+MAKE today BE TODAY
+MAKE right_now BE NOW
+
+SHOW "today: " AND today
+SHOW "now:   " AND right_now
+
+NOTE: Get parts of the date (split by "-")
+MAKE parts BE SPLIT today BY "-"
+MAKE year  BE parts AT 0
+MAKE month BE parts AT 1
+MAKE day   BE parts AT 2
+
+SHOW "year: "  AND year
+SHOW "month: " AND month
+SHOW "day: "   AND day
+
+NOTE: --- Write a file ---
+MAKE log_line BE "[" AND right_now AND "] ypool ran successfully"
+WRITE "ypool_log.txt" WITH log_line
+SHOW "log written"
+
+NOTE: --- Read it back ---
+MAKE content BE READ "ypool_log.txt"
+SHOW "file contents: " AND content
+
+NOTE: --- JSON: parse a JSON string ---
+MAKE raw_json BE "{\"name\": \"loopy\", \"score\": 100, \"active\": true}"
+MAKE data BE PARSE JSON raw_json
+
+SHOW data GET name
+SHOW data GET score
+
+NOTE: --- Build a dict and serialize to JSON ---
+MAKE story BE {
+    title: "The Dragon's Tale",
+    category: "Fantasy",
+    words: 312,
+    published: YEAH
+}
+
+MAKE json_str BE DUMP JSON story
+SHOW json_str
+
+NOTE: --- Write JSON to a file and read it back ---
+WRITE "story_out.json" WITH json_str
+
+MAKE loaded_raw BE READ "story_out.json"
+MAKE loaded BE PARSE JSON loaded_raw
+SHOW "loaded title: " AND loaded GET title
+
+NOTE: --- FIND and FIND ALL in arrays ---
+MAKE catalog BE [
+    {title: "The Dragon's Tale",     category: "Fantasy", words: 312},
+    {title: "Sara's Garden",         category: "Nature",  words: 189},
+    {title: "Stars and Moon",        category: "Fantasy", words: 267},
+    {title: "The Little Fox",        category: "Animals", words: 145},
+    {title: "Moonlit Adventure",     category: "Fantasy", words: 401}
+]
+
+NOTE: find all Fantasy stories
+TEACH is_fantasy USING s { GIVE BACK s GET category IS "Fantasy" }
+MAKE fantasy BE FIND ALL IN catalog WHERE is_fantasy
+
+SHOW "Fantasy stories:"
+FOR EACH s IN fantasy {
+    SHOW "  " AND s GET title AND " (" AND s GET words AND " words)"
+}
+
+NOTE: find longest story
+TEACH is_long USING s { GIVE BACK s GET words IS MORE THAN 300 }
+MAKE long_stories BE FIND ALL IN catalog WHERE is_long
+
+SHOW "Stories over 300 words:"
+FOR EACH s IN long_stories {
+    SHOW "  " AND s GET title
+}
+
+NOTE: find first match
+TEACH is_animals USING s { GIVE BACK s GET category IS "Animals" }
+MAKE first_animal BE FIND IN catalog WHERE is_animals
+SHOW "First animal story: " AND first_animal GET title
+
+NOTE: --- SORT BY field ---
+SORT catalog BY "words"
+SHOW "Sorted by word count:"
+FOR EACH s IN catalog {
+    SHOW "  " AND s GET words AND "  " AND s GET title
+}
+
+NOTE: --- Stats ---
+MAKE all_words BE []
+FOR EACH s IN catalog {
+    PUSH s GET words INTO all_words
+}
+
+SHOW "Total words: "   AND TOTAL OF all_words
+SHOW "Average words: " AND FORMAT AVERAGE OF all_words TO 1
+SHOW "Shortest: "      AND FIRST OF all_words
+SHOW "Longest: "       AND LAST OF all_words
+
+NOTE: --- Clean up temp files ---
+NOTE: In a real app you'd keep these, but for demo we leave them in place
+SHOW "done"

@@ -1,0 +1,124 @@
+NOTE: ── 11 NEW FEATURES ──────────────────────────────────────────────────────
+
+NOTE: --- Constants (FIX) ---
+FIX max_score BE 100
+FIX app_name BE "ypool"
+SHOW app_name AND " max score: " AND max_score
+
+NOTE: --- String Interpolation ($"...") ---
+MAKE user BE "loopy"
+MAKE score BE 87
+SHOW $"Player {user} scored {score} points"
+
+NOTE: --- Ternary expression (IF...THEN...ELSE) ---
+MAKE grade BE IF score IS MORE THAN 89 THEN "A" ELSE "B"
+SHOW $"Grade: {grade}"
+
+NOTE: --- Null coalescing (EITHER...OR) ---
+MAKE nickname BE NOTHING
+MAKE display_name BE EITHER nickname OR user
+SHOW $"Hello, {display_name}"
+
+NOTE: --- Default parameters ---
+TEACH greet USING name, greeting DEFAULT "Hello" {
+    SHOW greeting AND ", " AND name AND "!"
+}
+CALL greet WITH "loopy"
+CALL greet WITH "sara", "Hey"
+
+NOTE: --- Variadic functions (spread params) ---
+TEACH sum_all USING ...nums {
+    MAKE total BE 0
+    FOR EACH n IN nums {
+        MAKE total BE total PLUS n
+    }
+    GIVE BACK total
+}
+SHOW CALL sum_all WITH 1, 2, 3, 4, 5
+
+NOTE: --- Spread in array literals ---
+MAKE first_half BE [1, 2, 3]
+MAKE second_half BE [4, 5, 6]
+MAKE full BE [...first_half, ...second_half]
+SHOW full
+
+NOTE: --- Array destructuring ---
+MAKE rgb BE [255, 128, 0]
+MAKE [r, g, b] FROM rgb
+SHOW $"red={r} green={g} blue={b}"
+
+NOTE: --- Dict destructuring ---
+MAKE story BE {title: "Dragon Fire", category: "Fantasy", words: 312}
+MAKE {title, category} FROM story
+SHOW $"Title: {title} | Category: {category}"
+
+NOTE: --- Match / Switch ---
+MAKE level BE 3
+MATCH level {
+    IS 1 { SHOW "beginner" }
+    IS 2 { SHOW "intermediate" }
+    IS 3 { SHOW "advanced" }
+    OTHERWISE { SHOW "unknown level" }
+}
+
+NOTE: Match with comparison operators
+MAKE temp BE 72
+MATCH temp {
+    IS LESS THAN 32  { SHOW "freezing" }
+    IS LESS THAN 60  { SHOW "cold" }
+    IS BETWEEN 60 AND 80 { SHOW "comfortable" }
+    OTHERWISE        { SHOW "hot" }
+}
+
+NOTE: --- Regex (FITS keyword) ---
+MAKE email BE "loopy@example.com"
+CHECK IF email FITS "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$" {
+    SHOW "valid email"
+}
+
+MAKE phone BE "555-1234"
+CHECK IF phone FITS "^\d{3}-\d{4}$" {
+    SHOW "valid short phone"
+}
+
+NOTE: --- Regex builtins via CALL ---
+MAKE text BE "The price is $42.50 and $9.99"
+MAKE found BE CALL regex_find WITH text, "\$[\d.]+"
+SHOW $"First price: {found}"
+
+MAKE all_prices BE CALL regex_all WITH text, "\$[\d.]+"
+SHOW all_prices
+
+MAKE clean BE CALL regex_replace WITH "hello   world", "\s+", " "
+SHOW clean
+
+NOTE: --- EITHER with function result ---
+TEACH find_user USING id {
+    CHECK IF id IS 1 {
+        GIVE BACK {name: "loopy", role: "admin"}
+    }
+    GIVE BACK NOTHING
+}
+MAKE result BE EITHER CALL find_user WITH 99 OR {name: "guest", role: "viewer"}
+SHOW result GET name
+
+NOTE: --- Combining features: formatted leaderboard ---
+FIX board BE [
+    {name: "loopy",  score: 980},
+    {name: "sara",   score: 850},
+    {name: "max",    score: 760},
+    {name: "ally",   score: 900}
+]
+
+SORT board BY "score"
+REVERSE board
+
+SHOW "── Leaderboard ──"
+MAKE rank BE 1
+FOR EACH entry IN board {
+    MAKE label BE IF rank IS 1 THEN "★ " ELSE "  "
+    SHOW label AND rank AND ". " AND entry GET name AND " - " AND entry GET score
+    MAKE rank BE rank PLUS 1
+}
+
+SHOW "done"

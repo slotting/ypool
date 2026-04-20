@@ -1,0 +1,76 @@
+NOTE: ── 09 ADVANCED STRINGS ───────────────────────────────────────────────────
+NOTE: Operations you'd reach for when building a search/filter feature
+
+NOTE: --- STARTS WITH / ENDS WITH ---
+MAKE url BE "https://example.com/stories"
+MAKE file BE "stories.json"
+
+CHECK IF url STARTS WITH "https" {
+    SHOW "secure link"
+}
+CHECK IF file ENDS WITH ".json" {
+    SHOW "json file"
+}
+
+NOTE: --- SLICE (substring) ---
+MAKE title BE "The Dragon and the Moon"
+SHOW SLICE title FROM 4 TO 10     NOTE: Dragon
+SHOW SLICE title FROM 0 TO 3      NOTE: The
+
+NOTE: --- REPLACE ---
+MAKE text BE "Hello World"
+MAKE fixed BE REPLACE IN text FROM "World" TO "ypool"
+SHOW fixed    NOTE: Hello ypool
+
+NOTE: --- REPLACE for sanitizing user input ---
+MAKE raw BE "  sara's story  "
+MAKE clean BE TRIM raw
+MAKE safe BE REPLACE IN clean FROM "'" TO "'"
+SHOW safe
+
+NOTE: --- String repetition with TIMES ---
+MAKE line BE "─" TIMES 30
+SHOW line
+
+MAKE stars BE "★ " TIMES 5
+SHOW stars
+
+NOTE: --- FORMAT numbers ---
+MAKE pi BE 3.14159265
+SHOW FORMAT pi TO 2      NOTE: 3.14
+SHOW FORMAT pi TO 4      NOTE: 3.1416
+
+MAKE price BE 9.9
+SHOW FORMAT price TO 2   NOTE: 9.90
+
+NOTE: --- Searching in text (like a search bar) ---
+TEACH matches_search USING story_title, query {
+    MAKE lower_title BE DOWNCASE OF story_title
+    MAKE lower_query BE DOWNCASE OF query
+    GIVE BACK lower_title CONTAINS lower_query
+}
+
+MAKE stories BE ["The Dragon's Tale", "A Moonlit Adventure", "Sara and the Stars", "Dragon Fire"]
+MAKE query BE "dragon"
+
+MAKE results BE []
+FOR EACH story IN stories {
+    CHECK IF CALL matches_search WITH story, query {
+        PUSH story INTO results
+    }
+}
+
+SHOW "Search results for '" AND query AND "':"
+FOR EACH r IN results {
+    SHOW "  " AND r
+}
+
+NOTE: --- Building a formatted display ---
+TEACH format_story USING title, category, word_count {
+    MAKE padding BE " " TIMES (20 MINUS LENGTH OF title)
+    MAKE wc_str BE FORMAT word_count TO 0
+    GIVE BACK title AND padding AND "[" AND category AND "]  " AND wc_str AND " words"
+}
+
+SHOW CALL format_story WITH "The Dragon's Tale", "Fantasy", 312
+SHOW CALL format_story WITH "Sara's Garden", "Nature", 189

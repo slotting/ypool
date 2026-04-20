@@ -1,0 +1,76 @@
+NOTE: ── 04 ARRAYS ──────────────────────────────────────────────────────────────
+
+NOTE: --- Creating arrays ---
+MAKE nums BE [10, 20, 30, 40, 50]
+MAKE names BE ["alice", "bob", "carol"]
+MAKE mixed BE [1, "two", YEAH, NOTHING]
+MAKE empty BE []
+
+NOTE: --- Accessing elements (0-indexed) ---
+SHOW nums AT 0       NOTE: 10
+SHOW nums AT 4       NOTE: 50
+SHOW names AT 1      NOTE: bob
+
+NOTE: --- Length ---
+SHOW LENGTH OF nums   NOTE: 5
+
+NOTE: --- PUSH (append) ---
+PUSH 60 INTO nums
+SHOW nums
+
+NOTE: --- POP (remove last) ---
+POP FROM nums
+SHOW nums
+
+NOTE: --- UPDATE (change element) ---
+UPDATE nums AT 0 TO 99
+SHOW nums
+
+NOTE: Also with MAKE syntax:
+MAKE nums AT 1 BE 200
+SHOW nums
+
+NOTE: --- REMOVE AT index ---
+REMOVE nums AT 0
+SHOW nums
+
+NOTE: --- SORT ---
+MAKE letters BE ["c", "a", "b", "d"]
+SORT letters
+SHOW letters
+
+NOTE: --- REVERSE ---
+REVERSE letters
+SHOW letters
+
+NOTE: --- FOR EACH loop ---
+MAKE fruits BE ["apple", "banana", "cherry"]
+FOR EACH fruit IN fruits {
+    COMBINE "I like " AND fruit THEN SHOW IT
+}
+
+NOTE: --- Nested arrays ---
+MAKE grid BE [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+SHOW grid AT 1 AT 2    NOTE: 6
+
+NOTE: --- Building arrays in loops ---
+MAKE squares BE []
+COUNT FROM 1 TO 5 AS i {
+    PUSH i TIMES i INTO squares
+}
+SHOW squares    NOTE: [1, 4, 9, 16, 25]
+
+NOTE: --- CONTAINS check ---
+CHECK IF fruits CONTAINS "banana" {
+    SHOW "banana is in the list"
+}
+
+NOTE: --- JOIN array to string ---
+SHOW JOIN fruits BY ", "
+
+NOTE: --- Summing with loop ---
+MAKE total BE 0
+FOR EACH n IN nums {
+    MAKE total BE total PLUS n
+}
+SHOW total

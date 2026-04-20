@@ -1,0 +1,55 @@
+NOTE: hello world in ypool
+
+MAKE name BE "loopy"
+SHOW "hello from ypool!"
+SHOW name
+
+NOTE: math
+MAKE x BE 10
+MAKE y BE 5
+SHOW x PLUS y
+SHOW x TIMES y
+
+NOTE: combine — the signature ypool move
+COMBINE "what's good, " AND name THEN SHOW IT
+COMBINE x AND y THEN KEEP IT AS total
+SHOW total
+
+NOTE: functions
+TEACH greet USING person {
+    COMBINE "big up, " AND person THEN SHOW IT
+}
+
+CALL greet WITH "loopy"
+
+NOTE: conditions
+MAKE score BE 85
+
+CHECK IF score IS MORE THAN 80 {
+    SHOW "big W"
+} OTHERWISE {
+    SHOW "keep grinding"
+}
+
+NOTE: loops
+MAKE i BE 1
+KEEP GOING WHILE i IS LESS THAN 4 {
+    SHOW i
+    MAKE i BE i PLUS 1
+}
+
+NOTE: recursion
+TEACH factorial USING n {
+    CHECK IF n IS LESS THAN 2 {
+        GIVE BACK 1
+    }
+    GIVE BACK n TIMES CALL factorial WITH (n MINUS 1)
+}
+
+SHOW CALL factorial WITH 5
+
+NOTE: booleans
+MAKE logged_in BE YEAH
+CHECK IF logged_in IS YEAH {
+    SHOW "welcome back"
+}

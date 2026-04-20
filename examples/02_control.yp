@@ -1,0 +1,87 @@
+NOTE: ── 02 CONTROL FLOW ────────────────────────────────────────────────────────
+
+NOTE: --- If / Otherwise ---
+MAKE score BE 87
+
+CHECK IF score IS AT LEAST 90 {
+    SHOW "A grade"
+} OTHERWISE {
+    CHECK IF score IS AT LEAST 80 {
+        SHOW "B grade"
+    } OTHERWISE {
+        CHECK IF score IS AT LEAST 70 {
+            SHOW "C grade"
+        } OTHERWISE {
+            SHOW "needs work"
+        }
+    }
+}
+
+NOTE: --- Logical operators: ALSO (and), OR, NOT ---
+MAKE age BE 22
+MAKE has_id BE YEAH
+
+CHECK IF age IS AT LEAST 18 ALSO has_id IS YEAH {
+    SHOW "access granted"
+}
+
+MAKE raining BE NAH
+MAKE cold BE YEAH
+
+CHECK IF raining OR cold {
+    SHOW "stay inside"
+} OTHERWISE {
+    SHOW "go outside"
+}
+
+CHECK IF NOT raining {
+    SHOW "no rain today"
+}
+
+NOTE: --- IS BETWEEN ---
+MAKE temp BE 22
+
+CHECK IF temp IS BETWEEN 18 AND 26 {
+    SHOW "comfortable temperature"
+}
+
+NOTE: --- CONTAINS ---
+MAKE word BE "ypool"
+
+CHECK IF word CONTAINS "pool" {
+    SHOW "found it"
+}
+
+NOTE: --- While loop ---
+MAKE i BE 1
+KEEP GOING WHILE i IS AT MOST 5 {
+    SHOW i
+    MAKE i BE i PLUS 1
+}
+
+NOTE: --- Count loop (COUNT FROM x TO y AS var) ---
+COUNT FROM 1 TO 5 AS n {
+    SHOW n
+}
+
+NOTE: --- Count down ---
+COUNT FROM 5 TO 1 AS n {
+    SHOW n
+}
+
+NOTE: --- it is always available inside COUNT ---
+COUNT FROM 0 TO 3 {
+    SHOW it
+}
+
+NOTE: --- STOP (break) and SKIP (continue) ---
+COUNT FROM 1 TO 10 AS n {
+    CHECK IF n MOD 2 IS 0 {
+        SKIP
+    }
+    CHECK IF n IS MORE THAN 7 {
+        STOP
+    }
+    SHOW n
+}
+NOTE: prints: 1 3 5 7

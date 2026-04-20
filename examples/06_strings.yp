@@ -1,0 +1,61 @@
+NOTE: ── 06 STRINGS ─────────────────────────────────────────────────────────────
+
+NOTE: --- Creating strings ---
+MAKE greeting BE "what's good"
+MAKE name BE 'loopy'    NOTE: single or double quotes both work
+MAKE escaped BE "line one\nline two\ttabbed"
+
+SHOW greeting
+SHOW escaped
+
+NOTE: --- Concatenation with AND ---
+COMBINE greeting AND ", " AND name AND "!" THEN SHOW IT
+
+NOTE: --- Length ---
+SHOW LENGTH OF greeting    NOTE: 11
+
+NOTE: --- Case ---
+SHOW UPCASE OF greeting
+SHOW DOWNCASE OF "YPOOL LANGUAGE"
+
+NOTE: --- Trim whitespace ---
+MAKE padded BE "   hello   "
+SHOW TRIM padded
+
+NOTE: --- SPLIT into array ---
+MAKE csv BE "alice,bob,carol,dave"
+MAKE parts BE SPLIT csv BY ","
+SHOW parts
+SHOW LENGTH OF parts    NOTE: 4
+
+FOR EACH part IN parts {
+    SHOW UPCASE OF part
+}
+
+NOTE: --- JOIN array into string ---
+MAKE words BE ["ypool", "is", "cool"]
+SHOW JOIN words BY " "
+
+NOTE: --- CONTAINS (substring check) ---
+MAKE sentence BE "ypool is a cool language"
+
+CHECK IF sentence CONTAINS "cool" {
+    SHOW "found cool"
+}
+CHECK IF NOT sentence CONTAINS "bad" {
+    SHOW "nothing bad here"
+}
+
+NOTE: --- Indexing characters ---
+MAKE word BE "hello"
+SHOW word AT 0    NOTE: h
+SHOW word AT 4    NOTE: o
+
+NOTE: --- Type conversion ---
+MAKE num BE 42
+MAKE str_num BE CALL asText WITH num
+SHOW KIND OF str_num    NOTE: text
+
+MAKE text_num BE "99"
+MAKE real_num BE CALL asNumber WITH text_num
+SHOW real_num PLUS 1    NOTE: 100
