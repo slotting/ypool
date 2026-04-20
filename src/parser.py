@@ -74,6 +74,9 @@ class Parser:
         if t == TT.WRITE:   return self.parse_write()
         if t == TT.BRING:   return self.parse_bring()
         if t == TT.REPEAT:  return self.parse_repeat()
+        if t == TT.ASSERT:  return self.parse_assert()
+        if t == TT.FETCH:   return {'type': 'CallStmt', 'call': self._parse_fetch_expr()}
+        if t == TT.LIST:    return {'type': 'CallStmt', 'call': self._parse_list_files()}
         raise YPoolError(
             f'Unknown statement "{self.current().value}"',
             self.current().line
@@ -326,12 +329,24 @@ class Parser:
         return {'type': 'ReverseArr', 'name': name}
 
     def parse_try(self) -> dict:
-        self.advance()
+        self.advance()  # TRY
         body = self.parse_block()
-        self.expect(TT.CATCH)
-        err_var = self.expect(TT.IDENTIFIER).value
-        handler = self.parse_block()
-        return {'type': 'Try', 'body': body, 'err_var': err_var, 'handler': handler}
+        catches = []
+        while self.current().type == TT.CATCH:
+            self.advance()  # CATCH
+            if self.current().type == TT.STRING:
+                err_type = self.advance().value
+                err_var  = self.expect(TT.IDENTIFIER).value
+            else:
+                err_type = None
+                err_var  = self.expect(TT.IDENTIFIER).value
+            handler = self.parse_block()
+            catches.append({'err_type': err_type, 'err_var': err_var, 'body': handler})
+            if err_type is None:
+                break  # catch-all must be last
+        if not catches:
+            raise YPoolError('TRY requires at least one CATCH', self.current().line)
+        return {'type': 'Try', 'body': body, 'catches': catches}
 
     def parse_throw(self) -> dict:
         self.advance()
@@ -348,7 +363,18 @@ class Parser:
         self.advance()  # BRING
         self.expect(TT.IN)
         path = self.parse_primary()
-        return {'type': 'BringIn', 'path': path}
+        namespace = None
+        if self.match(TT.AS):
+            namespace = self.expect(TT.IDENTIFIER).value
+        return {'type': 'BringIn', 'path': path, 'namespace': namespace}
+
+    def parse_assert(self) -> dict:
+        line = self.current().line
+        self.advance()  # ASSERT
+        condition = self.parse_condition()
+        self.expect(TT.ELSE)
+        message = self.parse_primary()
+        return {'type': 'Assert', 'condition': condition, 'message': message, 'line': line}
 
     # ── block ──────────────────────────────────────────────────────────────────
 
@@ -714,6 +740,50 @@ class Parser:
         if t.type == TT.NOW:
             self.advance(); return {'type': 'Builtin', 'op': 'now', 'args': []}
 
+        # ── math ──────────────────────────────────────────────────────────────
+        if t.type in (TT.LOG, TT.SIN, TT.COS, TT.TAN):
+            op = t.type.name.lower(); self.advance(); self.expect(TT.OF)
+            return {'type': 'Builtin', 'op': op, 'args': [self.parse_primary()]}
+
+        if t.type == TT.PI:
+            self.advance(); return {'type': 'Builtin', 'op': 'pi', 'args': []}
+
+        if t.type == TT.E:
+            self.advance(); return {'type': 'Builtin', 'op': 'e_const', 'args': []}
+
+        # ── MERGE ─────────────────────────────────────────────────────────────
+        if t.type == TT.MERGE:
+            self.advance()
+            left = self.parse_primary()
+            self.expect(TT.WITH)
+            right = self.parse_primary()
+            return {'type': 'Builtin', 'op': 'merge', 'args': [left, right]}
+
+        # ── FETCH ─────────────────────────────────────────────────────────────
+        if t.type == TT.FETCH:
+            return self._parse_fetch_expr()
+
+        # ── filesystem ────────────────────────────────────────────────────────
+        if t.type == TT.LIST:
+            return self._parse_list_files()
+
+        if t.type == TT.PATH:
+            self.advance(); self.expect(TT.EXISTS)
+            return {'type': 'Builtin', 'op': 'path_exists', 'args': [self.parse_primary()]}
+
+        # ── ENV ───────────────────────────────────────────────────────────────
+        if t.type == TT.ENV:
+            self.advance()
+            return {'type': 'Builtin', 'op': 'env_var', 'args': [self.parse_primary()]}
+
+        # ── ERROR ─────────────────────────────────────────────────────────────
+        if t.type == TT.ERROR:
+            self.advance()
+            err_type = self.parse_primary()
+            self.expect(TT.WITH)
+            err_msg = self.parse_primary()
+            return {'type': 'Builtin', 'op': 'make_error', 'args': [err_type, err_msg]}
+
         if t.type == TT.MAP:
             self.advance()
             arr = self.parse_primary()
@@ -746,12 +816,31 @@ class Parser:
     def parse_call_expr(self) -> dict:
         self.advance()  # CALL
         name = self.expect(TT.IDENTIFIER).value
+        keys = []
+        while self.current().type == TT.GET:
+            self.advance()
+            keys.append(self.expect(TT.IDENTIFIER).value)
         args = []
         if self.match(TT.WITH):
             args.append(self.parse_unary())
             while self.match(TT.COMMA):
                 args.append(self.parse_unary())
-        return {'type': 'Call', 'name': name, 'args': args}
+        return {'type': 'Call', 'name': name, 'keys': keys, 'args': args}
+
+    def _parse_fetch_expr(self) -> dict:
+        self.advance()  # FETCH
+        url = self.parse_primary()
+        if self.current().type == TT.AS:
+            self.advance()
+            self.expect(TT.JSON)
+            return {'type': 'Builtin', 'op': 'fetch_json', 'args': [url]}
+        return {'type': 'Builtin', 'op': 'fetch', 'args': [url]}
+
+    def _parse_list_files(self) -> dict:
+        self.advance()  # LIST
+        self.expect(TT.FILES)
+        self.expect(TT.IN)
+        return {'type': 'Builtin', 'op': 'list_files', 'args': [self.parse_primary()]}
 
     def parse_array_literal(self) -> dict:
         self.advance()  # [

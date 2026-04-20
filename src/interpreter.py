@@ -4,6 +4,8 @@ import json as _json
 import datetime as _dt
 import os as _os
 import re as _re
+import urllib.request as _urllib_req
+import urllib.error   as _urllib_err
 from .lexer import YPoolError
 
 
@@ -74,7 +76,8 @@ class YPoolFunction:
 
 class Interpreter:
     def __init__(self):
-        self.globals = Environment()
+        self.globals    = Environment()
+        self.call_stack = []   # list of function names for stack traces
         self._setup_builtins()
 
     def _setup_builtins(self):
@@ -241,6 +244,7 @@ class Interpreter:
             value = self.eval(stmt['value'], env)
             if not isinstance(arr, list):
                 raise YPoolError(f'"{stmt["name"]}" is not an array')
+            if index < 0: index = len(arr) + index
             if index < 0 or index >= len(arr):
                 raise YPoolError(f'Index {index} out of range (length {len(arr)})')
             arr[index] = value
@@ -277,10 +281,22 @@ class Interpreter:
             try:
                 self.exec_block(stmt['body'], Environment(env))
             except (ThrowSignal, YPoolError) as e:
-                catch_env = Environment(env)
-                msg = e.value if isinstance(e, ThrowSignal) else str(e)
-                catch_env.define(stmt['err_var'], msg)
-                self.exec_block(stmt['handler'], catch_env)
+                err_val = e.value if isinstance(e, ThrowSignal) else str(e)
+                if not hasattr(e, '_ypool_stack'):
+                    e._ypool_stack = list(self.call_stack)
+                matched = False
+                for catch in stmt['catches']:
+                    et = catch['err_type']
+                    if et is not None:
+                        if not (isinstance(err_val, dict) and err_val.get('type') == et):
+                            continue
+                    catch_env = Environment(env)
+                    catch_env.define(catch['err_var'], err_val)
+                    self.exec_block(catch['body'], catch_env)
+                    matched = True
+                    break
+                if not matched:
+                    raise
 
         elif t == 'Throw':
             raise ThrowSignal(self.eval(stmt['value'], env))
@@ -326,8 +342,24 @@ class Interpreter:
                 else:
                     env.define(key, val)
 
+        elif t == 'Assert':
+            if not self.truthy(self.eval(stmt['condition'], env)):
+                msg = self.ypool_str(self.eval(stmt['message'], env))
+                raise ThrowSignal({'type': 'AssertionError', 'msg': msg})
+
         elif t == 'BringIn':
-            self._bring_in(stmt['path'], env)
+            path_str = self.ypool_str(self.eval(stmt['path'], env))
+            ns = stmt.get('namespace')
+            if ns:
+                ns_env = Environment()
+                self._bring_in(path_str, ns_env)
+                module = dict(ns_env.vars)
+                if env.has(ns):
+                    env.set(ns, module)
+                else:
+                    env.define(ns, module)
+            else:
+                self._bring_in(path_str, env)
 
         elif t == 'Repeat':
             count = int(self.eval(stmt['count'], env))
@@ -403,11 +435,13 @@ class Interpreter:
             index = self.eval(node['index'], env)
             if isinstance(obj, list):
                 i = int(index)
+                if i < 0: i = len(obj) + i
                 if i < 0 or i >= len(obj):
-                    raise YPoolError(f'Index {i} out of range (length {len(obj)})')
+                    raise YPoolError(f'Index {int(index)} out of range (length {len(obj)})')
                 return obj[i]
             if isinstance(obj, str):
                 i = int(index)
+                if i < 0: i = len(obj) + i
                 return obj[i]
             if isinstance(obj, dict):
                 if index not in obj:
@@ -481,7 +515,13 @@ class Interpreter:
             return low <= val <= high
 
         if t == 'Call':
-            fn   = env.get(node['name'])
+            fn = env.get(node['name'])
+            for key in node.get('keys', []):
+                if not isinstance(fn, dict):
+                    raise YPoolError(f'"{node["name"]}" is not a namespace')
+                if key not in fn:
+                    raise YPoolError(f'"{key}" not found in namespace "{node["name"]}"')
+                fn = fn[key]
             args = [self.eval(a, env) for a in node['args']]
             return self._call(fn, args, node['name'])
 
@@ -500,6 +540,7 @@ class Interpreter:
         if callable(fn):
             return fn(args)
         if isinstance(fn, YPoolFunction):
+            self.call_stack.append(name)
             fn_env = Environment(fn.closure)
             for i, (pname, default_node) in enumerate(fn.params):
                 if i < len(args):
@@ -511,10 +552,17 @@ class Interpreter:
             if fn.variadic is not None:
                 fn_env.define(fn.variadic, list(args[len(fn.params):]))
             try:
-                self.exec_block(fn.body, fn_env)
-                return None
-            except ReturnSignal as r:
-                return r.value
+                try:
+                    self.exec_block(fn.body, fn_env)
+                    return None
+                except ReturnSignal as r:
+                    return r.value
+                except (ThrowSignal, YPoolError) as e:
+                    if not hasattr(e, '_ypool_stack'):
+                        e._ypool_stack = list(self.call_stack)
+                    raise
+            finally:
+                self.call_stack.pop()
         raise YPoolError(f'"{name}" is not a function')
 
     # ── string interpolation ───────────────────────────────────────────────────
@@ -541,14 +589,14 @@ class Interpreter:
 
     # ── module import ──────────────────────────────────────────────────────────
 
-    def _bring_in(self, path, env):
+    def _bring_in(self, path_str: str, env):
         from .lexer  import Lexer
         from .parser import Parser
         try:
-            with open(path, 'r', encoding='utf-8') as f:
+            with open(path_str, 'r', encoding='utf-8') as f:
                 source = f.read()
         except OSError as e:
-            raise YPoolError(f'Cannot import "{path}": {e}')
+            raise YPoolError(f'Cannot import "{path_str}": {e}')
         tokens  = Lexer(source).tokenize()
         program = Parser(tokens).parse()
         self.run(program, env)
@@ -595,15 +643,7 @@ class Interpreter:
         if op == 'round':   return round(args[0])
 
         if op == 'kind':
-            v = args[0]
-            if v is None:                    return 'nothing'
-            if isinstance(v, bool):          return 'bool'
-            if isinstance(v, (int, float)):  return 'number'
-            if isinstance(v, str):           return 'text'
-            if isinstance(v, list):          return 'array'
-            if isinstance(v, dict):          return 'dict'
-            if isinstance(v, YPoolFunction): return 'function'
-            return 'unknown'
+            return self._kind_of(args[0])
 
         if op == 'keys':
             if not isinstance(args[0], dict): raise YPoolError('KEYS OF requires a dict')
@@ -750,9 +790,75 @@ class Interpreter:
         if op == 'now':
             return _dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
+        # ── math ────────────────────────────────────────────────────────────────
+        if op == 'log':
+            if not isinstance(args[0], (int, float)) or args[0] <= 0:
+                raise YPoolError('LOG OF requires a positive number')
+            return math.log(args[0])
+        if op == 'sin':     return math.sin(args[0])
+        if op == 'cos':     return math.cos(args[0])
+        if op == 'tan':     return math.tan(args[0])
+        if op == 'pi':      return math.pi
+        if op == 'e_const': return math.e
+
+        # ── dict merge ──────────────────────────────────────────────────────────
+        if op == 'merge':
+            a, b = args
+            if not isinstance(a, dict) or not isinstance(b, dict):
+                raise YPoolError('MERGE requires two dicts')
+            return {**a, **b}
+
+        # ── HTTP ────────────────────────────────────────────────────────────────
+        if op == 'fetch':
+            url = self.ypool_str(args[0])
+            try:
+                with _urllib_req.urlopen(url) as resp:
+                    return resp.read().decode('utf-8')
+            except _urllib_err.URLError as e:
+                raise YPoolError(f'FETCH failed: {e}')
+
+        if op == 'fetch_json':
+            url = self.ypool_str(args[0])
+            try:
+                with _urllib_req.urlopen(url) as resp:
+                    return _json.loads(resp.read().decode('utf-8'))
+            except _urllib_err.URLError as e:
+                raise YPoolError(f'FETCH failed: {e}')
+            except _json.JSONDecodeError as e:
+                raise YPoolError(f'FETCH AS JSON: invalid JSON: {e}')
+
+        # ── filesystem ──────────────────────────────────────────────────────────
+        if op == 'list_files':
+            path = self.ypool_str(args[0])
+            try:
+                return sorted(_os.listdir(path))
+            except OSError as e:
+                raise YPoolError(f'LIST FILES IN "{path}": {e}')
+
+        if op == 'path_exists':
+            return _os.path.exists(self.ypool_str(args[0]))
+
+        # ── environment ─────────────────────────────────────────────────────────
+        if op == 'env_var':
+            return _os.environ.get(self.ypool_str(args[0]))
+
+        # ── typed error ─────────────────────────────────────────────────────────
+        if op == 'make_error':
+            return {'type': self.ypool_str(args[0]), 'msg': self.ypool_str(args[1])}
+
         raise YPoolError(f'Unknown builtin: {op}')
 
     # ── helpers ────────────────────────────────────────────────────────────────
+
+    def _kind_of(self, val) -> str:
+        if val is None:                    return 'nothing'
+        if isinstance(val, bool):          return 'bool'
+        if isinstance(val, (int, float)):  return 'number'
+        if isinstance(val, str):           return 'text'
+        if isinstance(val, list):          return 'array'
+        if isinstance(val, dict):          return 'dict'
+        if isinstance(val, YPoolFunction): return 'function'
+        return 'unknown'
 
     def _smart_add(self, left, right):
         if isinstance(left, str) or isinstance(right, str):

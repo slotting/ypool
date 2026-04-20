@@ -133,6 +133,26 @@ class TT(Enum):
     # Control / misc
     REPEAT = auto()
     EXISTS = auto()
+    ASSERT = auto()
+    # Math constants / trig
+    LOG = auto()
+    SIN = auto()
+    COS = auto()
+    TAN = auto()
+    PI  = auto()
+    E   = auto()
+    # Dict
+    MERGE = auto()
+    # HTTP
+    FETCH = auto()
+    # Filesystem
+    LIST  = auto()
+    FILES = auto()
+    PATH  = auto()
+    # System
+    ENV   = auto()
+    # Typed errors
+    ERROR = auto()
     # File / JSON / Date
     READ = auto()
     WRITE = auto()
@@ -192,7 +212,12 @@ KEYWORDS = {
     'FIND': TT.FIND, 'ALL': TT.ALL, 'WHERE': TT.WHERE,
     'MAP': TT.MAP, 'FILTER': TT.FILTER, 'REDUCE': TT.REDUCE,
     'START': TT.START, 'PIPE': TT.PIPE,
-    'REPEAT': TT.REPEAT, 'EXISTS': TT.EXISTS,
+    'REPEAT': TT.REPEAT, 'EXISTS': TT.EXISTS, 'ASSERT': TT.ASSERT,
+    'LOG': TT.LOG, 'SIN': TT.SIN, 'COS': TT.COS, 'TAN': TT.TAN,
+    'PI': TT.PI, 'E': TT.E,
+    'MERGE': TT.MERGE, 'FETCH': TT.FETCH,
+    'LIST': TT.LIST, 'FILES': TT.FILES, 'PATH': TT.PATH,
+    'ENV': TT.ENV, 'ERROR': TT.ERROR,
     'READ': TT.READ, 'WRITE': TT.WRITE,
     'PARSE': TT.PARSE, 'DUMP': TT.DUMP, 'JSON': TT.JSON,
     'TODAY': TT.TODAY, 'NOW': TT.NOW,

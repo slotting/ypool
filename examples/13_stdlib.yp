@@ -1,0 +1,123 @@
+NOTE: ── 13 STDLIB & NEW FEATURES ────────────────────────────────────────────
+
+NOTE: --- Math builtins ---
+SHOW FORMAT PI TO 5
+SHOW FORMAT E TO 5
+SHOW FORMAT SIN OF 0 TO 2
+SHOW FORMAT COS OF 0 TO 2
+SHOW FORMAT TAN OF 0 TO 2
+SHOW FORMAT LOG OF E TO 4
+SHOW FORMAT SQRT OF (PI TIMES PI) TO 4
+
+NOTE: --- Negative indexing ---
+MAKE arr BE [10, 20, 30, 40, 50]
+SHOW arr AT -1
+SHOW arr AT -2
+MAKE s BE "hello"
+SHOW s AT -1
+
+NOTE: --- MERGE dicts ---
+MAKE defaults BE {theme: "dark", lang: "en", size: 14}
+MAKE user_prefs BE {lang: "es", size: 18}
+MAKE settings BE MERGE defaults WITH user_prefs
+SHOW settings GET theme
+SHOW settings GET lang
+SHOW settings GET size
+
+NOTE: --- PATH EXISTS and LIST FILES ---
+SHOW PATH EXISTS "examples"
+SHOW PATH EXISTS "nope.txt"
+MAKE files BE LIST FILES IN "examples"
+SHOW LENGTH OF files
+SHOW FIRST OF files
+
+NOTE: --- ENV ---
+MAKE home BE ENV "HOME"
+CHECK IF home IS NOTHING {
+    SHOW "HOME not set (Windows uses USERPROFILE)"
+    MAKE home BE ENV "USERPROFILE"
+} OTHERWISE {
+    SHOW $"HOME: {home}"
+}
+
+NOTE: --- ASSERT ---
+MAKE age BE 25
+ASSERT age IS MORE THAN 0 ELSE "age must be positive"
+SHOW "assertion passed"
+
+TRY {
+    ASSERT age IS MORE THAN 100 ELSE "too young for this feature"
+} CATCH e {
+    MAKE err_msg BE e GET msg
+    SHOW "caught: " AND err_msg
+}
+
+NOTE: --- Typed THROW / CATCH ---
+TEACH safe_divide USING a, b {
+    ASSERT b IS NOT 0 ELSE "divide by zero"
+    GIVE BACK a DIVIDED BY b
+}
+
+TRY {
+    SHOW CALL safe_divide WITH 10, 2
+    SHOW CALL safe_divide WITH 10, 0
+} CATCH "AssertionError" e {
+    MAKE err_msg BE e GET msg
+    SHOW "math error: " AND err_msg
+} CATCH e {
+    SHOW "other error: " AND e
+}
+
+NOTE: --- ERROR builtin for typed throws ---
+TEACH find_user USING id {
+    CHECK IF id IS NOT 1 {
+        MAKE emsg BE "user " AND id AND " does not exist"
+        THROW ERROR "NotFound" WITH emsg
+    }
+    GIVE BACK {id: 1, name: "loopy"}
+}
+
+TRY {
+    MAKE u BE CALL find_user WITH 1
+    SHOW u GET name
+    MAKE u2 BE CALL find_user WITH 99
+} CATCH "NotFound" e {
+    MAKE err_msg BE e GET msg
+    SHOW "not found: " AND err_msg
+} CATCH e {
+    SHOW "unexpected: " AND e
+}
+
+NOTE: --- BRING IN AS namespace ---
+NOTE: (skip network FETCH in non-interactive example)
+
+NOTE: --- CALL with namespace (module GET fn) ---
+MAKE math_utils BE {
+    double: NOTHING,
+    triple: NOTHING
+}
+TEACH double_fn USING x { GIVE BACK x TIMES 2 }
+TEACH triple_fn USING x { GIVE BACK x TIMES 3 }
+UPDATE math_utils double TO double_fn
+UPDATE math_utils triple TO triple_fn
+
+SHOW CALL math_utils GET double WITH 7
+SHOW CALL math_utils GET triple WITH 7
+
+NOTE: --- Stack trace test ---
+TEACH inner USING x {
+    ASSERT x IS MORE THAN 0 ELSE "x must be positive"
+    GIVE BACK x
+}
+TEACH outer USING x {
+    GIVE BACK CALL inner WITH x
+}
+
+TRY {
+    CALL outer WITH -1
+} CATCH "AssertionError" e {
+    MAKE err_msg BE e GET msg
+    SHOW "assertion: " AND err_msg
+}
+
+SHOW "done"
