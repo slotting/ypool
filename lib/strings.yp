@@ -1,0 +1,79 @@
+NOTE: ── lib/strings.yp  ────────────────────────────────────────────────────────
+NOTE: Extra string helpers — BRING IN "strings"
+
+NOTE: --- pad_left(s, width, char) → right-align in a field
+TEACH pad_left USING s, width, char {
+    MAKE str BE s AND ""
+    KEEP GOING WHILE LENGTH OF str IS LESS THAN width {
+        MAKE str BE char AND str
+    }
+    GIVE BACK str
+}
+
+NOTE: --- pad_right(s, width, char) → left-align in a field
+TEACH pad_right USING s, width, char {
+    MAKE str BE s AND ""
+    KEEP GOING WHILE LENGTH OF str IS LESS THAN width {
+        MAKE str BE str AND char
+    }
+    GIVE BACK str
+}
+
+NOTE: --- repeat_str(s, n) → "ab" * 3 → "ababab"
+TEACH repeat_str USING s, n {
+    MAKE result BE ""
+    REPEAT n {
+        MAKE result BE result AND s
+    }
+    GIVE BACK result
+}
+
+NOTE: --- title_case(s) → capitalise each word
+TEACH title_case USING s {
+    MAKE words BE SPLIT s BY " "
+    MAKE result BE []
+    FOR EACH w IN words {
+        CHECK IF LENGTH OF w IS MORE THAN 0 {
+            MAKE first BE UPCASE OF SLICE w FROM 0 TO 1
+            MAKE rest  BE DOWNCASE OF SLICE w FROM 1 TO LENGTH OF w
+            PUSH first AND rest INTO result
+        }
+    }
+    GIVE BACK JOIN result BY " "
+}
+
+NOTE: --- count_occurrences(s, sub) → how many times sub appears in s
+TEACH count_occurrences USING s, sub {
+    MAKE parts BE SPLIT s BY sub
+    GIVE BACK LENGTH OF parts MINUS 1
+}
+
+NOTE: --- is_numeric(s) → yeah if string is a valid number
+TEACH is_numeric USING s {
+    GIVE BACK s FITS "^-?\\d+(\\.\\d+)?$"
+}
+
+NOTE: --- lines(s) → split string into lines
+TEACH lines USING s {
+    GIVE BACK SPLIT s BY "\n"
+}
+
+NOTE: --- truncate(s, max_len, suffix) → shorten with "..." if too long
+TEACH truncate USING s, max_len, suffix {
+    CHECK IF LENGTH OF s IS AT MOST max_len {
+        GIVE BACK s
+    }
+    MAKE cut_at BE max_len MINUS LENGTH OF suffix
+    MAKE prefix BE SLICE s FROM 0 TO cut_at
+    GIVE BACK prefix AND suffix
+}
+
+NOTE: --- starts_with(s, prefix) — wraps builtin
+TEACH str_starts USING s, prefix {
+    GIVE BACK s STARTS WITH prefix
+}
+
+NOTE: --- ends_with(s, suffix) — wraps builtin
+TEACH str_ends USING s, suffix {
+    GIVE BACK s ENDS WITH suffix
+}

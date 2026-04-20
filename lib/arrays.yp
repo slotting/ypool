@@ -1,0 +1,92 @@
+NOTE: ── lib/arrays.yp  ─────────────────────────────────────────────────────────
+NOTE: Extra array helpers you can BRING IN "arrays"
+
+NOTE: --- chunk(arr, size) → [[...], [...], ...]
+TEACH chunk USING arr, size {
+    MAKE result BE []
+    MAKE i BE 0
+    KEEP GOING WHILE i IS LESS THAN LENGTH OF arr {
+        PUSH SLICE arr FROM i TO i PLUS size INTO result
+        MAKE i BE i PLUS size
+    }
+    GIVE BACK result
+}
+
+NOTE: --- compact(arr) → removes NOTHING / NAH / 0 / "" values
+TEACH compact USING arr {
+    TEACH _keep USING x { GIVE BACK x IS NOT NOTHING ALSO x IS NOT 0 ALSO NOT x IS "" }
+    GIVE BACK FILTER arr WHERE _keep
+}
+
+NOTE: --- sum_arr(arr) → total of all numbers
+TEACH sum_arr USING arr {
+    GIVE BACK TOTAL OF arr
+}
+
+NOTE: --- max_of(arr) → largest number
+TEACH max_of USING arr {
+    CHECK IF LENGTH OF arr IS 0 { GIVE BACK NOTHING }
+    MAKE best BE arr AT 0
+    FOR EACH n IN arr {
+        CHECK IF n IS MORE THAN best { MAKE best BE n }
+    }
+    GIVE BACK best
+}
+
+NOTE: --- min_of(arr) → smallest number
+TEACH min_of USING arr {
+    CHECK IF LENGTH OF arr IS 0 { GIVE BACK NOTHING }
+    MAKE best BE arr AT 0
+    FOR EACH n IN arr {
+        CHECK IF n IS LESS THAN best { MAKE best BE n }
+    }
+    GIVE BACK best
+}
+
+NOTE: --- flatten_deep(arr) → recursively flattens nested arrays
+TEACH flatten_deep USING arr {
+    MAKE result BE []
+    FOR EACH item IN arr {
+        CHECK IF KIND OF item IS "array" {
+            MAKE inner BE CALL flatten_deep WITH item
+            FOR EACH x IN inner { PUSH x INTO result }
+        } OTHERWISE {
+            PUSH item INTO result
+        }
+    }
+    GIVE BACK result
+}
+
+NOTE: --- range(start, end) → [start, start+1, ..., end]
+TEACH range USING s, e {
+    MAKE result BE []
+    COUNT FROM s TO e AS i {
+        PUSH i INTO result
+    }
+    GIVE BACK result
+}
+
+NOTE: --- includes(arr, val) → yeah/nah
+TEACH includes USING arr, val {
+    GIVE BACK arr CONTAINS val
+}
+
+NOTE: --- index_of(arr, val) → first matching index or -1
+TEACH index_of USING arr, val {
+    MAKE i BE 0
+    FOR EACH item IN arr {
+        CHECK IF item IS val { GIVE BACK i }
+        MAKE i BE i PLUS 1
+    }
+    GIVE BACK -1
+}
+
+NOTE: --- zip_with(a, b, fn) → apply fn to each paired element
+TEACH zip_with USING a, b, fn {
+    MAKE result BE []
+    MAKE pairs BE ZIP a WITH b
+    FOR EACH pair IN pairs {
+        PUSH CALL fn WITH pair AT 0, pair AT 1 INTO result
+    }
+    GIVE BACK result
+}

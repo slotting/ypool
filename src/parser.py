@@ -77,6 +77,8 @@ class Parser:
         if t == TT.ASSERT:  return self.parse_assert()
         if t == TT.FETCH:   return {'type': 'CallStmt', 'call': self._parse_fetch_expr()}
         if t == TT.LIST:    return {'type': 'CallStmt', 'call': self._parse_list_files()}
+        if t == TT.MEMOIZE: return self.parse_memoize()
+        if t == TT.BRIDGE:  return self.parse_bridge()
         raise YPoolError(
             f'Unknown statement "{self.current().value}"',
             self.current().line
@@ -368,6 +370,20 @@ class Parser:
             namespace = self.expect(TT.IDENTIFIER).value
         return {'type': 'BringIn', 'path': path, 'namespace': namespace}
 
+    def parse_memoize(self) -> dict:
+        self.advance()  # MEMOIZE
+        name = self.expect(TT.IDENTIFIER).value
+        self.expect(TT.AS)
+        alias = self.expect(TT.IDENTIFIER).value
+        return {'type': 'Memoize', 'name': name, 'alias': alias}
+
+    def parse_bridge(self) -> dict:
+        self.advance()  # BRIDGE
+        module = self.parse_primary()
+        self.expect(TT.AS)
+        alias = self.expect(TT.IDENTIFIER).value
+        return {'type': 'Bridge', 'module': module, 'alias': alias}
+
     def parse_assert(self) -> dict:
         line = self.current().line
         self.advance()  # ASSERT
@@ -414,7 +430,20 @@ class Parser:
             self.expect(TT.START)
             init = self.parse_primary()
             return {'type': 'Builtin', 'op': 'reduce', 'args': [collection, fn, init]}
-        raise YPoolError(f'Expected MAP, FILTER, or REDUCE after PIPE', self.current().line)
+        if t == TT.UNIQUE:
+            self.advance()
+            return {'type': 'Builtin', 'op': 'unique', 'args': [collection]}
+        if t == TT.FLATTEN:
+            self.advance()
+            return {'type': 'Builtin', 'op': 'flatten', 'args': [collection]}
+        if t == TT.TALLY:
+            self.advance()
+            return {'type': 'Builtin', 'op': 'tally', 'args': [collection]}
+        if t == TT.GROUP:
+            self.advance(); self.expect(TT.BY)
+            fn = self.parse_primary()
+            return {'type': 'Builtin', 'op': 'group_by', 'args': [collection, fn]}
+        raise YPoolError(f'Expected MAP, FILTER, REDUCE, UNIQUE, FLATTEN, TALLY, or GROUP after PIPE', self.current().line)
 
     def parse_or(self) -> dict:
         left = self.parse_and()
@@ -807,6 +836,52 @@ class Parser:
             init = self.parse_primary()
             return {'type': 'Builtin', 'op': 'reduce', 'args': [arr, fn, init]}
 
+        # ── new array / function ops ──────────────────────────────────────────
+
+        if t.type == TT.UNIQUE:
+            self.advance(); self.expect(TT.OF)
+            return {'type': 'Builtin', 'op': 'unique', 'args': [self.parse_primary()]}
+
+        if t.type == TT.FLATTEN:
+            self.advance()
+            return {'type': 'Builtin', 'op': 'flatten', 'args': [self.parse_primary()]}
+
+        if t.type == TT.ZIP:
+            self.advance()
+            a = self.parse_primary()
+            self.expect(TT.WITH)
+            b = self.parse_primary()
+            return {'type': 'Builtin', 'op': 'zip', 'args': [a, b]}
+
+        if t.type == TT.TALLY:
+            self.advance(); self.expect(TT.OF)
+            return {'type': 'Builtin', 'op': 'tally', 'args': [self.parse_primary()]}
+
+        if t.type == TT.CLAMP:
+            self.advance()
+            val = self.parse_primary()
+            self.expect(TT.FROM)
+            lo = self.parse_expr()
+            self.expect(TT.TO)
+            hi = self.parse_expr()
+            return {'type': 'Builtin', 'op': 'clamp', 'args': [val, lo, hi]}
+
+        if t.type == TT.GROUP:
+            self.advance()
+            arr = self.parse_primary()
+            self.expect(TT.BY)
+            fn = self.parse_primary()
+            return {'type': 'Builtin', 'op': 'group_by', 'args': [arr, fn]}
+
+        if t.type == TT.PARTIAL:
+            self.advance()
+            fn = self.parse_primary()
+            self.expect(TT.WITH)
+            partial_args = [self.parse_expr()]
+            while self.match(TT.COMMA):
+                partial_args.append(self.parse_expr())
+            return {'type': 'Builtin', 'op': 'partial', 'args': [fn] + partial_args}
+
         raise YPoolError(f'Unexpected "{t.value}"', t.line)
 
     def parse_ask(self) -> dict:
@@ -822,9 +897,10 @@ class Parser:
             keys.append(self.expect(TT.IDENTIFIER).value)
         args = []
         if self.match(TT.WITH):
-            args.append(self.parse_unary())
+            # Use parse_expr so args can contain full arithmetic like n MINUS 1
+            args.append(self.parse_expr())
             while self.match(TT.COMMA):
-                args.append(self.parse_unary())
+                args.append(self.parse_expr())
         return {'type': 'Call', 'name': name, 'keys': keys, 'args': args}
 
     def _parse_fetch_expr(self) -> dict:

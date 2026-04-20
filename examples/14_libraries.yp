@@ -1,0 +1,106 @@
+NOTE: ── 14 LIBRARIES & NEW FEATURES ─────────────────────────────────────────
+
+NOTE: --- UNIQUE ---
+MAKE nums BE [1, 2, 3, 2, 1, 4, 3, 5]
+SHOW UNIQUE OF nums
+
+NOTE: --- FLATTEN ---
+MAKE nested BE [[1, 2], [3, 4], [5]]
+SHOW FLATTEN nested
+
+NOTE: --- ZIP ---
+MAKE names BE ["alice", "bob", "carol"]
+MAKE scores BE [95, 87, 92]
+MAKE pairs BE ZIP names WITH scores
+SHOW pairs
+
+NOTE: --- TALLY ---
+MAKE colors BE ["red", "blue", "red", "green", "blue", "red"]
+SHOW TALLY OF colors
+
+NOTE: --- CLAMP ---
+SHOW CLAMP 150 FROM 0 TO 100
+SHOW CLAMP -5 FROM 0 TO 100
+SHOW CLAMP 42 FROM 0 TO 100
+
+NOTE: --- GROUP ---
+MAKE words BE ["apple", "ant", "bear", "avocado", "banana", "beetle"]
+TEACH first_letter USING w { GIVE BACK SLICE w FROM 0 TO 1 }
+MAKE grouped BE GROUP words BY first_letter
+SHOW grouped GET a
+SHOW grouped GET b
+
+NOTE: --- PARTIAL application ---
+TEACH multiply USING a, b { GIVE BACK a TIMES b }
+MAKE double BE PARTIAL multiply WITH 2
+MAKE triple BE PARTIAL multiply WITH 3
+SHOW CALL double WITH 7
+SHOW CALL triple WITH 7
+
+NOTE: --- MEMOIZE ---
+NOTE: Replace fib with itself memoized — recursive calls hit the cache
+TEACH fib USING n {
+    CHECK IF n IS AT MOST 1 { GIVE BACK n }
+    GIVE BACK (CALL fib WITH n MINUS 1) PLUS (CALL fib WITH n MINUS 2)
+}
+MEMOIZE fib AS fib
+SHOW CALL fib WITH 10
+SHOW CALL fib WITH 30
+
+NOTE: --- PIPE with new ops ---
+MAKE data BE [3, 1, 4, 1, 5, 9, 2, 6, 5, 3, 5]
+TEACH _big USING x { GIVE BACK x IS MORE THAN 3 }
+MAKE result BE data PIPE UNIQUE PIPE FILTER WHERE _big
+SHOW result
+
+NOTE: --- BRING IN standard library ---
+BRING IN "arrays"
+BRING IN "math"
+BRING IN "strings"
+
+NOTE: --- Using arrays lib ---
+MAKE evens BE CALL range WITH 1, 10
+SHOW evens
+MAKE chunked BE CALL chunk WITH evens, 3
+SHOW chunked
+
+NOTE: --- Using math lib ---
+SHOW TAU
+SHOW CALL factorial WITH 6
+SHOW CALL lerp WITH 0, 100, 0.25
+SHOW CALL is_even WITH 42
+SHOW CALL gcd WITH 48, 18
+MAKE mfib BE PARTIAL fibonacci WITH 0
+NOTE: Just use the function directly
+SHOW CALL fibonacci WITH 8
+
+NOTE: --- Using strings lib ---
+SHOW CALL pad_left WITH "42", 6, "0"
+SHOW CALL title_case WITH "the quick brown fox"
+SHOW CALL truncate WITH "Hello, world! This is a long sentence.", 20, "..."
+SHOW CALL count_occurrences WITH "mississippi", "ss"
+SHOW CALL is_numeric WITH "3.14"
+SHOW CALL is_numeric WITH "hello"
+
+NOTE: --- BRING IN AS namespace ---
+BRING IN "arrays" AS arr
+SHOW CALL arr GET chunk WITH [1, 2, 3, 4, 5, 6], 2
+
+NOTE: --- BRIDGE Python module ---
+BRIDGE "os.path" AS ospath
+SHOW CALL ospath GET join WITH "examples", "hello.yp"
+SHOW CALL ospath GET exists WITH "examples"
+
+NOTE: --- BRIDGE math module ---
+BRIDGE "math" AS pymath
+MAKE py_pi BE pymath GET pi
+SHOW FORMAT py_pi TO 6
+SHOW CALL pymath GET pow WITH 2, 10
+SHOW CALL pymath GET factorial WITH 7
+
+NOTE: --- BRIDGE random module ---
+BRIDGE "random" AS rng
+MAKE lucky BE CALL rng GET randint WITH 1, 100
+SHOW "random number:" AND lucky
+
+SHOW "done"

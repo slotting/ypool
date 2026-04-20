@@ -21,6 +21,54 @@ class ThrowSignal(Exception):
     def __init__(self, value): self.value = value
 
 
+# ── Python bridge wrapper ──────────────────────────────────────────────────────
+
+class PyBridge:
+    """Wraps a Python module/object so ypool can call its attributes."""
+    def __init__(self, module, name='<bridge>'):
+        self.module = module
+        self.name   = name
+
+    def get_attr(self, attr):
+        val = getattr(self.module, attr, _MISSING)
+        if val is _MISSING:
+            raise YPoolError(f'Bridge "{self.name}" has no attribute "{attr}"')
+        if callable(val):
+            return lambda args: val(*args)
+        return val
+
+    def __repr__(self):
+        return f'<bridge {self.name}>'
+
+_MISSING = object()
+
+
+# ── partial application wrapper ────────────────────────────────────────────────
+
+class YPoolPartial:
+    """Stores a function + pre-applied arguments for partial application."""
+    def __init__(self, fn, partial_args):
+        self.fn           = fn
+        self.partial_args = list(partial_args)
+        self.name         = (getattr(fn, 'name', None) or '?') + '/partial'
+
+    def __repr__(self):
+        return f'<partial {self.name}>'
+
+
+# ── memoized wrapper ───────────────────────────────────────────────────────────
+
+class YPoolMemoized:
+    """Caches results of a function keyed by repr(args)."""
+    def __init__(self, fn):
+        self.fn    = fn
+        self.cache = {}
+        self.name  = (getattr(fn, 'name', None) or '?') + '/memoized'
+
+    def __repr__(self):
+        return f'<memoized {self.name}>'
+
+
 # ── environment (scope) ────────────────────────────────────────────────────────
 
 class Environment:
@@ -239,15 +287,19 @@ class Interpreter:
             arr.pop()
 
         elif t == 'UpdateIndex':
-            arr   = env.get(stmt['name'])
-            index = int(self.eval(stmt['index'], env))
+            obj   = env.get(stmt['name'])
+            index = self.eval(stmt['index'], env)
             value = self.eval(stmt['value'], env)
-            if not isinstance(arr, list):
-                raise YPoolError(f'"{stmt["name"]}" is not an array')
-            if index < 0: index = len(arr) + index
-            if index < 0 or index >= len(arr):
-                raise YPoolError(f'Index {index} out of range (length {len(arr)})')
-            arr[index] = value
+            if isinstance(obj, dict):
+                obj[index] = value
+            elif isinstance(obj, list):
+                i = int(index)
+                if i < 0: i = len(obj) + i
+                if i < 0 or i >= len(obj):
+                    raise YPoolError(f'Index {i} out of range (length {len(obj)})')
+                obj[i] = value
+            else:
+                raise YPoolError(f'"{stmt["name"]}" is not an array or dict')
 
         elif t == 'UpdateKey':
             obj   = env.get(stmt['name'])
@@ -374,6 +426,31 @@ class Interpreter:
                 except BreakSignal:
                     break
 
+        elif t == 'Memoize':
+            fn = env.get(stmt['name'])
+            if not isinstance(fn, (YPoolFunction, YPoolPartial, YPoolMemoized)) and not callable(fn):
+                raise YPoolError(f'MEMOIZE requires a function, got {self._kind_of(fn)}')
+            memoized = YPoolMemoized(fn)
+            alias = stmt['alias']
+            if env.has(alias):
+                env.set(alias, memoized)
+            else:
+                env.define(alias, memoized)
+
+        elif t == 'Bridge':
+            import importlib
+            module_name = self.ypool_str(self.eval(stmt['module'], env))
+            try:
+                module = importlib.import_module(module_name)
+            except ImportError as e:
+                raise YPoolError(f'Cannot bridge "{module_name}": {e}')
+            bridge = PyBridge(module, module_name)
+            alias  = stmt['alias']
+            if env.has(alias):
+                env.set(alias, bridge)
+            else:
+                env.define(alias, bridge)
+
         else:
             raise YPoolError(f'Unknown statement type: {t}')
 
@@ -451,9 +528,11 @@ class Interpreter:
 
         if t == 'DictGet':
             obj = self.eval(node['obj'], env)
-            if not isinstance(obj, dict):
-                raise YPoolError('GET requires a dict')
             key = node['key']
+            if isinstance(obj, PyBridge):
+                return obj.get_attr(key)
+            if not isinstance(obj, dict):
+                raise YPoolError('GET requires a dict or bridge')
             if key not in obj:
                 raise YPoolError(f'Key "{key}" not found in dict')
             return obj[key]
@@ -517,11 +596,14 @@ class Interpreter:
         if t == 'Call':
             fn = env.get(node['name'])
             for key in node.get('keys', []):
-                if not isinstance(fn, dict):
-                    raise YPoolError(f'"{node["name"]}" is not a namespace')
-                if key not in fn:
-                    raise YPoolError(f'"{key}" not found in namespace "{node["name"]}"')
-                fn = fn[key]
+                if isinstance(fn, PyBridge):
+                    fn = fn.get_attr(key)
+                elif isinstance(fn, dict):
+                    if key not in fn:
+                        raise YPoolError(f'"{key}" not found in namespace "{node["name"]}"')
+                    fn = fn[key]
+                else:
+                    raise YPoolError(f'"{node["name"]}" is not a namespace or bridge')
             args = [self.eval(a, env) for a in node['args']]
             return self._call(fn, args, node['name'])
 
@@ -537,6 +619,17 @@ class Interpreter:
     # ── function call helper ───────────────────────────────────────────────────
 
     def _call(self, fn, args, name='?'):
+        # Partial: prepend stored args
+        if isinstance(fn, YPoolPartial):
+            return self._call(fn.fn, fn.partial_args + list(args), fn.name)
+
+        # Memoized: cache by repr of args
+        if isinstance(fn, YPoolMemoized):
+            key = repr(args)
+            if key not in fn.cache:
+                fn.cache[key] = self._call(fn.fn, args, fn.name)
+            return fn.cache[key]
+
         if callable(fn):
             return fn(args)
         if isinstance(fn, YPoolFunction):
@@ -589,11 +682,43 @@ class Interpreter:
 
     # ── module import ──────────────────────────────────────────────────────────
 
+    def _resolve_path(self, path_str: str) -> str:
+        """Find a .yp file by searching multiple locations."""
+        # 1. Exact path as given
+        if _os.path.isfile(path_str):
+            return path_str
+        # 2. With .yp extension
+        with_ext = path_str if path_str.endswith('.yp') else path_str + '.yp'
+        if _os.path.isfile(with_ext):
+            return with_ext
+        # 3. lib/ subdirectory (relative to CWD)
+        lib_local = _os.path.join('lib', with_ext)
+        if _os.path.isfile(lib_local):
+            return lib_local
+        # 4. lib/ next to the interpreter script
+        script_lib = _os.path.normpath(
+            _os.path.join(_os.path.dirname(__file__), '..', 'lib', with_ext)
+        )
+        if _os.path.isfile(script_lib):
+            return script_lib
+        # 5. ~/.ypool/lib/
+        home_lib = _os.path.join(_os.path.expanduser('~'), '.ypool', 'lib', with_ext)
+        if _os.path.isfile(home_lib):
+            return home_lib
+        # 6. YPOOL_PATH environment variable (colon/semicolon-separated dirs)
+        for directory in _os.environ.get('YPOOL_PATH', '').split(_os.pathsep):
+            if directory:
+                candidate = _os.path.join(directory, with_ext)
+                if _os.path.isfile(candidate):
+                    return candidate
+        raise YPoolError(f'Cannot find module "{path_str}"')
+
     def _bring_in(self, path_str: str, env):
         from .lexer  import Lexer
         from .parser import Parser
+        resolved = self._resolve_path(path_str)
         try:
-            with open(path_str, 'r', encoding='utf-8') as f:
+            with open(resolved, 'r', encoding='utf-8') as f:
                 source = f.read()
         except OSError as e:
             raise YPoolError(f'Cannot import "{path_str}": {e}')
@@ -777,7 +902,10 @@ class Interpreter:
                 if v is None:            return None
                 if isinstance(v, bool):  return v
                 if isinstance(v, (int, float, str, list, dict)): return v
-                if isinstance(v, YPoolFunction): return f'<function {v.name}>'
+                if isinstance(v, YPoolFunction):  return f'<function {v.name}>'
+                if isinstance(v, YPoolPartial):   return f'<partial {v.name}>'
+                if isinstance(v, YPoolMemoized):  return f'<memoized {v.name}>'
+                if isinstance(v, PyBridge):       return f'<bridge {v.name}>'
                 return str(v)
             try:
                 return _json.dumps(args[0], default=_serialize, ensure_ascii=False, indent=2)
@@ -846,18 +974,80 @@ class Interpreter:
         if op == 'make_error':
             return {'type': self.ypool_str(args[0]), 'msg': self.ypool_str(args[1])}
 
+        # ── new array ops ────────────────────────────────────────────────────────
+
+        if op == 'unique':
+            arr = args[0]
+            if not isinstance(arr, list): raise YPoolError('UNIQUE OF requires an array')
+            seen, result = [], []
+            for item in arr:
+                if item not in seen:
+                    seen.append(item)
+                    result.append(item)
+            return result
+
+        if op == 'flatten':
+            arr = args[0]
+            if not isinstance(arr, list): raise YPoolError('FLATTEN requires an array')
+            result = []
+            for item in arr:
+                if isinstance(item, list):
+                    result.extend(item)
+                else:
+                    result.append(item)
+            return result
+
+        if op == 'zip':
+            a, b = args
+            if not isinstance(a, list) or not isinstance(b, list):
+                raise YPoolError('ZIP requires two arrays')
+            return [[x, y] for x, y in zip(a, b)]
+
+        if op == 'tally':
+            arr = args[0]
+            if not isinstance(arr, list): raise YPoolError('TALLY OF requires an array')
+            result = {}
+            for item in arr:
+                key = self.ypool_str(item)
+                result[key] = result.get(key, 0) + 1
+            return result
+
+        if op == 'clamp':
+            val, lo, hi = args
+            return max(lo, min(hi, val))
+
+        if op == 'group_by':
+            arr, fn = args
+            if not isinstance(arr, list): raise YPoolError('GROUP requires an array')
+            result = {}
+            for item in arr:
+                key = self.ypool_str(self._call(fn, [item], 'GROUP'))
+                if key not in result:
+                    result[key] = []
+                result[key].append(item)
+            return result
+
+        if op == 'partial':
+            fn           = args[0]
+            partial_args = args[1:]
+            return YPoolPartial(fn, partial_args)
+
         raise YPoolError(f'Unknown builtin: {op}')
 
     # ── helpers ────────────────────────────────────────────────────────────────
 
     def _kind_of(self, val) -> str:
-        if val is None:                    return 'nothing'
-        if isinstance(val, bool):          return 'bool'
-        if isinstance(val, (int, float)):  return 'number'
-        if isinstance(val, str):           return 'text'
-        if isinstance(val, list):          return 'array'
-        if isinstance(val, dict):          return 'dict'
-        if isinstance(val, YPoolFunction): return 'function'
+        if val is None:                                    return 'nothing'
+        if isinstance(val, bool):                          return 'bool'
+        if isinstance(val, (int, float)):                  return 'number'
+        if isinstance(val, str):                           return 'text'
+        if isinstance(val, list):                          return 'array'
+        if isinstance(val, dict):                          return 'dict'
+        if isinstance(val, (YPoolFunction,
+                            YPoolPartial,
+                            YPoolMemoized)):               return 'function'
+        if isinstance(val, PyBridge):                      return 'bridge'
+        if callable(val):                                  return 'function'
         return 'unknown'
 
     def _smart_add(self, left, right):
@@ -887,6 +1077,8 @@ class Interpreter:
         if isinstance(val, dict):
             pairs = ', '.join(f'{k}: {self.ypool_str(v)}' for k, v in val.items())
             return '{' + pairs + '}'
-        if isinstance(val, YPoolFunction):
-            return f'<function {val.name}>'
+        if isinstance(val, YPoolFunction):  return f'<function {val.name}>'
+        if isinstance(val, YPoolPartial):   return f'<partial {val.name}>'
+        if isinstance(val, YPoolMemoized):  return f'<memoized {val.name}>'
+        if isinstance(val, PyBridge):       return f'<bridge {val.name}>'
         return str(val)

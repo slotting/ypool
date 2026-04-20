@@ -1,0 +1,76 @@
+NOTE: ── lib/math.yp  ──────────────────────────────────────────────────────────
+NOTE: Extra math helpers — BRING IN "math"
+
+NOTE: --- Constants
+FIX TAU BE PI TIMES 2
+FIX PHI BE 1.6180339887
+
+NOTE: --- clamp(val, lo, hi)  — wraps builtin
+TEACH clamp_val USING val, lo, hi {
+    GIVE BACK CLAMP val FROM lo TO hi
+}
+
+NOTE: --- lerp(a, b, t) → linear interpolation
+TEACH lerp USING a, b, t {
+    GIVE BACK a PLUS (b MINUS a) TIMES t
+}
+
+NOTE: --- degrees_to_radians(d)
+TEACH to_rad USING d {
+    GIVE BACK d TIMES PI DIVIDED BY 180
+}
+
+NOTE: --- radians_to_degrees(r)
+TEACH to_deg USING r {
+    GIVE BACK r TIMES 180 DIVIDED BY PI
+}
+
+NOTE: --- is_even / is_odd
+TEACH is_even USING n { GIVE BACK n MOD 2 IS 0 }
+TEACH is_odd  USING n { GIVE BACK n MOD 2 IS NOT 0 }
+
+NOTE: --- sign(n) → -1, 0, or 1
+TEACH sign USING n {
+    CHECK IF n IS MORE THAN 0 { GIVE BACK 1 }
+    CHECK IF n IS LESS THAN 0 { GIVE BACK -1 }
+    GIVE BACK 0
+}
+
+NOTE: --- factorial(n) (recursive)
+TEACH factorial USING n {
+    CHECK IF n IS AT MOST 1 { GIVE BACK 1 }
+    GIVE BACK n TIMES (CALL factorial WITH n MINUS 1)
+}
+
+NOTE: --- fibonacci(n) — nth Fibonacci number
+TEACH fibonacci USING n {
+    CHECK IF n IS AT MOST 1 { GIVE BACK n }
+    GIVE BACK (CALL fibonacci WITH n MINUS 1) PLUS (CALL fibonacci WITH n MINUS 2)
+}
+
+NOTE: --- gcd(a, b) — greatest common divisor
+TEACH gcd USING a, b {
+    KEEP GOING WHILE b IS NOT 0 {
+        MAKE temp BE b
+        MAKE b BE a MOD b
+        MAKE a BE temp
+    }
+    GIVE BACK a
+}
+
+NOTE: --- lcm(a, b) — least common multiple
+TEACH lcm USING a, b {
+    GIVE BACK ABS OF (a TIMES b) DIVIDED BY CALL gcd WITH a, b
+}
+
+NOTE: --- percent(part, whole) → 0-100
+TEACH percent USING part, whole {
+    GIVE BACK part TIMES 100 DIVIDED BY whole
+}
+
+NOTE: --- distance(x1, y1, x2, y2) — Euclidean distance
+TEACH distance USING x1, y1, x2, y2 {
+    MAKE dx BE x2 MINUS x1
+    MAKE dy BE y2 MINUS y1
+    GIVE BACK SQRT OF dx TIMES dx PLUS dy TIMES dy
+}

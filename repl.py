@@ -55,7 +55,7 @@ _STMT_STARTS = {
     'MAKE', 'FIX', 'SHOW', 'CHECK', 'MATCH', 'KEEP', 'FOR', 'COUNT',
     'TEACH', 'GIVE', 'COMBINE', 'PUSH', 'POP', 'UPDATE', 'REMOVE',
     'SORT', 'REVERSE', 'STOP', 'SKIP', 'TRY', 'THROW', 'WRITE', 'BRING',
-    'REPEAT', 'ASSERT',
+    'REPEAT', 'ASSERT', 'MEMOIZE', 'BRIDGE',
 }
 
 # ── brace-depth counter ────────────────────────────────────────────────────────

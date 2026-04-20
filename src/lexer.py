@@ -153,6 +153,17 @@ class TT(Enum):
     ENV   = auto()
     # Typed errors
     ERROR = auto()
+    # New array / function ops
+    UNIQUE  = auto()
+    FLATTEN = auto()
+    ZIP     = auto()
+    TALLY   = auto()
+    CLAMP   = auto()
+    GROUP   = auto()
+    PARTIAL = auto()
+    MEMOIZE = auto()
+    # Python bridge
+    BRIDGE  = auto()
     # File / JSON / Date
     READ = auto()
     WRITE = auto()
@@ -218,6 +229,10 @@ KEYWORDS = {
     'MERGE': TT.MERGE, 'FETCH': TT.FETCH,
     'LIST': TT.LIST, 'FILES': TT.FILES, 'PATH': TT.PATH,
     'ENV': TT.ENV, 'ERROR': TT.ERROR,
+    'UNIQUE': TT.UNIQUE, 'FLATTEN': TT.FLATTEN, 'ZIP': TT.ZIP,
+    'TALLY': TT.TALLY, 'CLAMP': TT.CLAMP, 'GROUP': TT.GROUP,
+    'PARTIAL': TT.PARTIAL, 'MEMOIZE': TT.MEMOIZE,
+    'BRIDGE': TT.BRIDGE,
     'READ': TT.READ, 'WRITE': TT.WRITE,
     'PARSE': TT.PARSE, 'DUMP': TT.DUMP, 'JSON': TT.JSON,
     'TODAY': TT.TODAY, 'NOW': TT.NOW,
@@ -230,7 +245,7 @@ KEYWORDS = {
 class YPoolError(Exception):
     def __init__(self, msg, line=None):
         self.line = line
-        super().__init__(f'[ypool line {line}] {msg}' if line else f'[ypool] {msg}')
+        super().__init__(f'[Line {line}] {msg}' if line else f'[ypool] {msg}')
 
 
 @dataclass
