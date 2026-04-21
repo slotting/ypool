@@ -1,0 +1,127 @@
+NOTE: ── 19 DATES & TIME with Python's datetime module ──────────────────────────
+NOTE: Work with dates, times, and durations — useful for scheduling and logging.
+
+BRIDGE "datetime" AS dtmod
+
+NOTE: get class references from the module
+MAKE date_class  BE dtmod GET date
+MAKE dt_class    BE dtmod GET datetime
+MAKE td_class    BE dtmod GET timedelta
+
+NOTE: ── today's date and current time ───────────────────────────────────────────
+SHOW "=== Today ==="
+MAKE today_obj BE CALL date_class GET today
+MAKE now_obj   BE CALL dt_class GET now
+
+SHOW "Today      : " AND today_obj
+SHOW "Right now  : " AND now_obj
+
+MAKE year   BE now_obj GET year
+MAKE month  BE now_obj GET month
+MAKE day    BE now_obj GET day
+MAKE hour   BE now_obj GET hour
+MAKE minute BE now_obj GET minute
+SHOW "Year       : " AND year
+SHOW "Month      : " AND month
+SHOW "Day        : " AND day
+SHOW "Time       : " AND hour AND ":" AND minute
+
+NOTE: ── day of week ─────────────────────────────────────────────────────────────
+SHOW ""
+SHOW "=== Day of Week ==="
+MAKE weekday_num BE CALL today_obj GET weekday
+MAKE day_names BE ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+MAKE day_name BE day_names AT weekday_num
+SHOW "Today is   : " AND day_name AND " (index " AND weekday_num AND ")"
+
+CHECK IF weekday_num IS AT LEAST 5 {
+    SHOW "It's the weekend!"
+} OTHERWISE {
+    SHOW "It's a weekday. Keep going!"
+}
+
+NOTE: ── timedelta — date arithmetic ─────────────────────────────────────────────
+SHOW ""
+SHOW "=== Date Arithmetic ==="
+
+MAKE one_week  BE CALL td_class WITH 7
+MAKE next_week BE today_obj + one_week
+MAKE last_week BE today_obj - one_week
+SHOW "Last week  : " AND last_week
+SHOW "Today      : " AND today_obj
+SHOW "Next week  : " AND next_week
+
+NOTE: days until next New Year
+MAKE next_year  BE year + 1
+MAKE ny_str     BE next_year AND "-01-01"
+MAKE new_year_d BE CALL date_class GET fromisoformat WITH ny_str
+MAKE diff       BE new_year_d - today_obj
+MAKE days_left  BE diff GET days
+SHOW "Days until " AND ny_str AND ": " AND days_left
+
+NOTE: ── formatted dates ──────────────────────────────────────────────────────────
+SHOW ""
+SHOW "=== Formatted Dates ==="
+MAKE fmt_long  BE CALL today_obj GET strftime WITH "%B %d, %Y"
+MAKE fmt_short BE CALL today_obj GET strftime WITH "%d/%m/%Y"
+MAKE fmt_iso   BE CALL today_obj GET isoformat
+SHOW "Long   : " AND fmt_long
+SHOW "Short  : " AND fmt_short
+SHOW "ISO    : " AND fmt_iso
+
+NOTE: ── parse a date from a string ──────────────────────────────────────────────
+SHOW ""
+SHOW "=== Parse Date from String ==="
+MAKE birthday_str BE "1990-07-04"
+MAKE birthday     BE CALL date_class GET fromisoformat WITH birthday_str
+MAKE age_delta    BE today_obj - birthday
+MAKE age_days     BE age_delta GET days
+MAKE age_years    BE age_days / 365
+SHOW "Birthday   : " AND birthday
+SHOW "Age (days) : " AND age_days
+SHOW "Age (years): " AND FORMAT age_years TO 1
+
+NOTE: ── upcoming events countdown ──────────────────────────────────────────────
+SHOW ""
+SHOW "=== Upcoming Events ==="
+
+TEACH days_until USING date_str {
+    MAKE target BE CALL date_class GET fromisoformat WITH date_str
+    MAKE d BE target - today_obj
+    GIVE BACK d GET days
+}
+
+MAKE events BE [
+    {name: "Valentine's Day",  date: year AND "-02-14"},
+    {name: "April Fool's Day", date: year AND "-04-01"},
+    {name: "Halloween",        date: year AND "-10-31"},
+    {name: "Christmas",        date: year AND "-12-25"},
+    {name: "New Year's Eve",   date: year AND "-12-31"}
+]
+
+FOR EACH event IN events {
+    MAKE ev_name BE event GET name
+    MAKE ev_str  BE event GET date
+    MAKE d       BE CALL days_until WITH ev_str
+    CHECK IF d IS MORE THAN 0 {
+        SHOW ev_name AND ": in " AND d AND " days"
+    }
+    CHECK IF d IS 0 {
+        SHOW ev_name AND ": TODAY!"
+    }
+    CHECK IF d IS LESS THAN 0 {
+        MAKE past BE 0 - d
+        SHOW ev_name AND ": " AND past AND " days ago"
+    }
+}
+
+NOTE: ── week number and ISO calendar ────────────────────────────────────────────
+SHOW ""
+SHOW "=== Calendar Info ==="
+MAKE iso_cal    BE CALL today_obj GET isocalendar
+MAKE iso_year   BE iso_cal AT 0
+MAKE iso_week   BE iso_cal AT 1
+MAKE iso_wday   BE iso_cal AT 2
+SHOW "ISO year   : " AND iso_year
+SHOW "Week #     : " AND iso_week
+SHOW "Weekday    : " AND iso_wday AND " (1=Mon, 7=Sun)"

@@ -3,6 +3,7 @@ import random as _random
 import json as _json
 import datetime as _dt
 import os as _os
+import inspect as _inspect
 import re as _re
 import urllib.request as _urllib_req
 import urllib.error   as _urllib_err
@@ -33,14 +34,71 @@ class PyBridge:
         val = getattr(self.module, attr, _MISSING)
         if val is _MISSING:
             raise YPoolError(f'Bridge "{self.name}" has no attribute "{attr}"')
+        # Modules and classes → sub-bridge so chains like
+        #   CALL bridge GET ClassName GET classmethod WITH args  work.
+        if _is_bridgeable(val):
+            return PyBridge(val, f'{self.name}.{attr}')
         if callable(val):
-            return lambda args: val(*args)
+            # Wrap so that returned rich objects are also auto-bridged.
+            sub_name = f'{self.name}.{attr}'
+            def _make_caller(fn, name):
+                def _caller(args):
+                    result = fn(*args)
+                    if _is_bridgeable(result):
+                        return PyBridge(result, name + '()')
+                    return result
+                return _caller
+            return _make_caller(val, sub_name)
         return val
 
-    def __repr__(self):
-        return f'<bridge {self.name}>'
+    def __call__(self, args):
+        """Allow a PyBridge wrapping a callable (class/func) to be called directly."""
+        result = self.module(*args)
+        if _is_bridgeable(result):
+            return PyBridge(result, self.name + '()')
+        return result
+
+    def _unwrap(self, other):
+        return other.module if isinstance(other, PyBridge) else other
+
+    def _wrap(self, result):
+        return PyBridge(result, '<bridge>') if _is_bridgeable(result) else result
+
+    def __add__(self, other):   return self._wrap(self.module + self._unwrap(other))
+    def __radd__(self, other):  return self._wrap(self._unwrap(other) + self.module)
+    def __sub__(self, other):   return self._wrap(self.module - self._unwrap(other))
+    def __rsub__(self, other):  return self._wrap(self._unwrap(other) - self.module)
+    def __mul__(self, other):   return self._wrap(self.module * self._unwrap(other))
+    def __truediv__(self, other): return self._wrap(self.module / self._unwrap(other))
+    def __lt__(self, other):    return self.module <  self._unwrap(other)
+    def __le__(self, other):    return self.module <= self._unwrap(other)
+    def __gt__(self, other):    return self.module >  self._unwrap(other)
+    def __ge__(self, other):    return self.module >= self._unwrap(other)
+    def __eq__(self, other):    return self.module == self._unwrap(other)
+    def __ne__(self, other):    return self.module != self._unwrap(other)
+    def __str__(self):          return str(self.module)
+    def __repr__(self):         return f'<bridge {self.name}: {self.module!r}>'
 
 _MISSING = object()
+
+# Primitives we should NOT wrap as a PyBridge even if they have __dict__
+_PRIMITIVE_TYPES = (int, float, str, bool, bytes, bytearray,
+                    list, tuple, dict, set, frozenset, type(None))
+
+def _is_bridgeable(val):
+    """Return True if val should be wrapped as a PyBridge for attribute chaining.
+
+    Modules and classes get bridged so their sub-attributes are reachable.
+    Non-callable, non-primitive instances (date, match, etc.) also get bridged
+    so their methods are callable.  Plain functions/methods stay as callables.
+    """
+    if isinstance(val, _PRIMITIVE_TYPES):
+        return False
+    if _inspect.ismodule(val) or _inspect.isclass(val):
+        return True
+    if callable(val):
+        return False   # plain function / bound method — keep as callable lambda
+    return True        # rich instance (date, match, etc.) — wrap for method access
 
 
 # ── partial application wrapper ────────────────────────────────────────────────
@@ -516,6 +574,10 @@ class Interpreter:
                 if i < 0 or i >= len(obj):
                     raise YPoolError(f'Index {int(index)} out of range (length {len(obj)})')
                 return obj[i]
+            if isinstance(obj, tuple):   # namedtuples (e.g. IsoCalendarDate) and plain tuples
+                i = int(index)
+                if i < 0: i = len(obj) + i
+                return obj[i]
             if isinstance(obj, str):
                 i = int(index)
                 if i < 0: i = len(obj) + i
@@ -524,6 +586,19 @@ class Interpreter:
                 if index not in obj:
                     raise YPoolError(f'Key "{index}" not found in dict')
                 return obj[index]
+            # PyBridge wrapping a tuple/namedtuple (e.g. isocalendar result)
+            if isinstance(obj, PyBridge):
+                inner = obj.module
+                if isinstance(inner, (list, tuple)):
+                    i = int(index)
+                    if i < 0: i = len(inner) + i
+                    result = inner[i]
+                    return PyBridge(result, f'{obj.name}[{i}]') if _is_bridgeable(result) else result
+                if isinstance(inner, dict):
+                    return inner[index]
+                # Attribute access by string key on a rich object
+                if isinstance(index, str):
+                    return obj.get_attr(index)
             raise YPoolError('AT indexing requires an array, string, or dict')
 
         if t == 'DictGet':
@@ -629,6 +704,10 @@ class Interpreter:
             if key not in fn.cache:
                 fn.cache[key] = self._call(fn.fn, args, fn.name)
             return fn.cache[key]
+
+        # PyBridge wrapping a class or module (e.g. datetime.date) — call it
+        if isinstance(fn, PyBridge):
+            return fn(args)
 
         if callable(fn):
             return fn(args)
@@ -1080,5 +1159,9 @@ class Interpreter:
         if isinstance(val, YPoolFunction):  return f'<function {val.name}>'
         if isinstance(val, YPoolPartial):   return f'<partial {val.name}>'
         if isinstance(val, YPoolMemoized):  return f'<memoized {val.name}>'
-        if isinstance(val, PyBridge):       return f'<bridge {val.name}>'
+        if isinstance(val, PyBridge):
+            # For module/class bridges show the bridge name; for instances show their value
+            if _inspect.ismodule(val.module) or _inspect.isclass(val.module):
+                return f'<bridge {val.name}>'
+            return str(val.module)   # date, datetime, timedelta, match, etc.
         return str(val)

@@ -272,7 +272,7 @@ class Parser:
         self.advance()
         left = self.parse_term()
         self.expect(TT.AND)
-        right = self.parse_expr()
+        right = self.parse_concat()
         self.expect(TT.THEN)
         if self.current().type == TT.SHOW:
             self.advance(); self.expect(TT.IT)
@@ -465,23 +465,23 @@ class Parser:
         return self.parse_comparison()
 
     def parse_comparison(self) -> dict:
-        left = self.parse_expr()
+        left = self.parse_concat()
 
         if self.current().type == TT.CONTAINS:
             self.advance()
-            return {'type': 'Contains', 'left': left, 'right': self.parse_expr()}
+            return {'type': 'Contains', 'left': left, 'right': self.parse_concat()}
 
         if self.current().type == TT.FITS:
             self.advance()
-            return {'type': 'Builtin', 'op': 'fits', 'args': [left, self.parse_expr()]}
+            return {'type': 'Builtin', 'op': 'fits', 'args': [left, self.parse_concat()]}
 
         if self.current().type == TT.STARTS:
             self.advance(); self.expect(TT.WITH)
-            return {'type': 'Builtin', 'op': 'starts_with', 'args': [left, self.parse_expr()]}
+            return {'type': 'Builtin', 'op': 'starts_with', 'args': [left, self.parse_concat()]}
 
         if self.current().type == TT.ENDS:
             self.advance(); self.expect(TT.WITH)
-            return {'type': 'Builtin', 'op': 'ends_with', 'args': [left, self.parse_expr()]}
+            return {'type': 'Builtin', 'op': 'ends_with', 'args': [left, self.parse_concat()]}
 
         if self.current().type != TT.IS:
             return left
@@ -496,23 +496,23 @@ class Parser:
             return {'type': 'BinOp', 'op': '!=', 'left': left, 'right': {'type': 'Nothing'}}
 
         if self.match(TT.NOT):
-            return {'type': 'BinOp', 'op': '!=', 'left': left, 'right': self.parse_expr()}
+            return {'type': 'BinOp', 'op': '!=', 'left': left, 'right': self.parse_concat()}
 
         if self.current().type == TT.MORE:
             self.advance(); self.expect(TT.THAN)
-            return {'type': 'BinOp', 'op': '>', 'left': left, 'right': self.parse_expr()}
+            return {'type': 'BinOp', 'op': '>', 'left': left, 'right': self.parse_concat()}
 
         if self.current().type == TT.LESS:
             self.advance(); self.expect(TT.THAN)
-            return {'type': 'BinOp', 'op': '<', 'left': left, 'right': self.parse_expr()}
+            return {'type': 'BinOp', 'op': '<', 'left': left, 'right': self.parse_concat()}
 
         if self.current().type == TT.AT and self.peek().type == TT.LEAST:
             self.advance(); self.advance()
-            return {'type': 'BinOp', 'op': '>=', 'left': left, 'right': self.parse_expr()}
+            return {'type': 'BinOp', 'op': '>=', 'left': left, 'right': self.parse_concat()}
 
         if self.current().type == TT.AT and self.peek().type == TT.MOST:
             self.advance(); self.advance()
-            return {'type': 'BinOp', 'op': '<=', 'left': left, 'right': self.parse_expr()}
+            return {'type': 'BinOp', 'op': '<=', 'left': left, 'right': self.parse_concat()}
 
         if self.current().type == TT.BETWEEN:
             self.advance()
@@ -521,15 +521,23 @@ class Parser:
             high = self.parse_term()
             return {'type': 'Between', 'value': left, 'low': low, 'high': high}
 
-        return {'type': 'BinOp', 'op': '==', 'left': left, 'right': self.parse_expr()}
+        return {'type': 'BinOp', 'op': '==', 'left': left, 'right': self.parse_concat()}
 
     # ── expressions ────────────────────────────────────────────────────────────
 
+    def parse_concat(self) -> dict:
+        """String/list concatenation with AND — lower precedence than + and -."""
+        left = self.parse_expr()
+        while self.current().type == TT.AND:
+            self.advance()
+            right = self.parse_expr()
+            left = {'type': 'BinOp', 'op': 'AND', 'left': left, 'right': right}
+        return left
+
     def parse_expr(self) -> dict:
         left = self.parse_term()
-        op_map = {TT.PLUS: '+', TT.MINUS: '-', TT.AND: 'AND'}
-        while self.current().type in op_map:
-            op = op_map[self.advance().type]
+        while self.current().type in (TT.PLUS, TT.MINUS):
+            op = {TT.PLUS: '+', TT.MINUS: '-'}[self.advance().type]
             right = self.parse_term()
             left = {'type': 'BinOp', 'op': op, 'left': left, 'right': right}
         return left
@@ -926,7 +934,7 @@ class Parser:
                 self.advance()
                 items.append({'type': 'Spread', 'value': self.parse_primary()})
             else:
-                items.append(self.parse_expr())
+                items.append(self.parse_concat())
             self.match(TT.COMMA)
         self.expect(TT.RBRACKET)
         return {'type': 'ArrayLiteral', 'items': items}
@@ -937,7 +945,7 @@ class Parser:
         while self.current().type != TT.RBRACE and not self.at_end():
             key = self.expect(TT.IDENTIFIER).value
             self.expect(TT.COLON)
-            value = self.parse_expr()
+            value = self.parse_concat()
             pairs.append((key, value))
             self.match(TT.COMMA)
         self.expect(TT.RBRACE)

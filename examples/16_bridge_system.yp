@@ -1,0 +1,82 @@
+NOTE: ── 16 SYSTEM INFO with os / sys / platform ────────────────────────────────
+NOTE: Read machine information, environment variables, and file system details.
+
+BRIDGE "os"  AS os_mod
+BRIDGE "sys" AS sys_mod
+
+NOTE: ── Python and platform info ────────────────────────────────────────────────
+
+SHOW "=== Python Environment ==="
+SHOW "Platform  : " AND sys_mod GET platform
+SHOW "Executable: " AND sys_mod GET executable
+SHOW "Max int   : " AND sys_mod GET maxsize
+MAKE ver_info BE sys_mod GET version_info
+SHOW "Python ver: " AND sys_mod GET version
+
+NOTE: ── working directory & file system ─────────────────────────────────────────
+
+SHOW ""
+SHOW "=== File System ==="
+MAKE cwd BE CALL os_mod GET getcwd
+SHOW "CWD: " AND cwd
+
+MAKE sep BE os_mod GET sep
+SHOW "Path sep: '" AND sep AND "'"
+
+NOTE: find ypool root from argv[0] so it works from any working directory
+BRIDGE "os.path" AS _osp_early
+MAKE argv BE sys_mod GET argv
+MAKE ypool_root BE CALL _osp_early GET dirname WITH CALL _osp_early GET abspath WITH FIRST OF argv
+MAKE examples_dir BE CALL _osp_early GET join WITH ypool_root, "examples"
+
+MAKE all_files BE CALL os_mod GET listdir WITH examples_dir
+TEACH _is_yp USING f {
+    GIVE BACK f ENDS WITH ".yp"
+}
+MAKE yp_files BE FILTER all_files WHERE _is_yp
+SORT yp_files
+SHOW ""
+SHOW "=== .yp files in examples/ (" AND LENGTH OF yp_files AND " total) ==="
+FOR EACH f IN yp_files {
+    SHOW "  " AND f
+}
+
+NOTE: ── environment variables ───────────────────────────────────────────────────
+
+SHOW ""
+SHOW "=== Environment Variables ==="
+
+MAKE home_key BE IF sys_mod GET platform IS "win32" THEN "USERPROFILE" ELSE "HOME"
+MAKE home BE CALL os_mod GET getenv WITH home_key
+SHOW "Home dir : " AND EITHER home OR "(not set)"
+
+MAKE path_val BE CALL os_mod GET getenv WITH "PATH"
+CHECK IF path_val IS NOT NOTHING {
+    MAKE parts BE SPLIT path_val BY IF sys_mod GET platform IS "win32" THEN ";" ELSE ":"
+    SHOW "PATH entries: " AND LENGTH OF parts
+    SHOW "First entry : " AND FIRST OF parts
+}
+
+NOTE: ── path utilities via os.path ──────────────────────────────────────────────
+
+BRIDGE "os.path" AS osp
+
+SHOW ""
+SHOW "=== Path Utilities ==="
+MAKE joined BE CALL osp GET join WITH examples_dir, "hello.yp"
+SHOW "Joined     : " AND joined
+SHOW "Exists     : " AND CALL osp GET exists WITH joined
+SHOW "Is file    : " AND CALL osp GET isfile WITH joined
+SHOW "Is dir     : " AND CALL osp GET isdir WITH examples_dir
+SHOW "Dirname    : " AND CALL osp GET dirname WITH joined
+SHOW "Basename   : " AND CALL osp GET basename WITH joined
+SHOW "Abspath    : " AND examples_dir
+
+NOTE: ── cpu count & pid ─────────────────────────────────────────────────────────
+
+SHOW ""
+SHOW "=== Process Info ==="
+MAKE pid BE CALL os_mod GET getpid
+SHOW "Process ID : " AND pid
+MAKE cpu_count BE CALL os_mod GET cpu_count
+SHOW "CPU cores  : " AND EITHER cpu_count OR "unknown"

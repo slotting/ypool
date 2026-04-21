@@ -1,0 +1,126 @@
+NOTE: ── 17 RANDOM with Python's random module ──────────────────────────────────
+NOTE: Dice rolls, card shuffles, random picks, and simulations.
+
+BRIDGE "random" AS rng
+
+NOTE: ── seed for reproducibility ───────────────────────────────────────────────
+CALL rng GET seed WITH 42
+SHOW "=== Seeded with 42 (results are reproducible) ==="
+
+NOTE: ── basic random numbers ───────────────────────────────────────────────────
+SHOW ""
+SHOW "--- Basic Numbers ---"
+MAKE r1 BE CALL rng GET random
+SHOW "random()      : " AND FORMAT r1 TO 4
+MAKE r2 BE CALL rng GET uniform WITH 1, 10
+SHOW "uniform(1,10) : " AND FORMAT r2 TO 4
+SHOW "randint(1,6)  : " AND CALL rng GET randint WITH 1, 6
+SHOW "randint(1,6)  : " AND CALL rng GET randint WITH 1, 6
+SHOW "randint(1,6)  : " AND CALL rng GET randint WITH 1, 6
+
+NOTE: ── simulate rolling two dice 10 times ──────────────────────────────────────
+SHOW ""
+SHOW "--- Roll 2d6 ten times ---"
+MAKE totals BE []
+COUNT FROM 1 TO 10 AS i {
+    MAKE d1 BE CALL rng GET randint WITH 1, 6
+    MAKE d2 BE CALL rng GET randint WITH 1, 6
+    MAKE total BE d1 + d2
+    PUSH total INTO totals
+    SHOW "  Roll " AND i AND ": " AND d1 AND " + " AND d2 AND " = " AND total
+}
+MAKE roll_sum BE 0
+FOR EACH t IN totals { MAKE roll_sum BE roll_sum + t }
+MAKE avg_roll BE roll_sum / LENGTH OF totals
+SHOW "Average roll  : " AND FORMAT avg_roll TO 2
+
+NOTE: ── pick random items ──────────────────────────────────────────────────────
+SHOW ""
+SHOW "--- Random Picks ---"
+MAKE fruits BE ["apple", "banana", "cherry", "date", "elderberry", "fig", "grape"]
+SHOW "Fruits list   : " AND fruits
+SHOW "Random pick   : " AND CALL rng GET choice WITH fruits
+SHOW "Random pick   : " AND CALL rng GET choice WITH fruits
+
+NOTE: sample without replacement — pick 3 unique items
+MAKE picked BE CALL rng GET sample WITH fruits, 3
+SHOW "Sample 3      : " AND picked
+
+NOTE: ── shuffle a deck (numbers 1-10) ───────────────────────────────────────────
+SHOW ""
+SHOW "--- Shuffle ---"
+MAKE deck BE [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+CALL rng GET shuffle WITH deck
+SHOW "Shuffled deck : " AND deck
+
+NOTE: ── weighted random choice ─────────────────────────────────────────────────
+SHOW ""
+SHOW "--- Weighted Choice (rare loot drop) ---"
+MAKE loot BE ["common sword", "rare shield", "epic bow", "legendary staff"]
+MAKE weights BE [70, 20, 8, 2]
+MAKE drop BE FIRST OF CALL rng GET choices WITH loot, weights
+SHOW "You got       : " AND drop
+
+NOTE: simulate 1000 drops and tally
+MAKE n_common BE 0
+MAKE n_rare   BE 0
+MAKE n_epic   BE 0
+MAKE n_legend BE 0
+COUNT FROM 1 TO 1000 AS _ {
+    MAKE result BE FIRST OF CALL rng GET choices WITH loot, weights
+    CHECK IF result IS "common sword"    { MAKE n_common BE n_common + 1 }
+    CHECK IF result IS "rare shield"     { MAKE n_rare   BE n_rare   + 1 }
+    CHECK IF result IS "epic bow"        { MAKE n_epic   BE n_epic   + 1 }
+    CHECK IF result IS "legendary staff" { MAKE n_legend BE n_legend + 1 }
+}
+SHOW ""
+SHOW "--- 1000-drop simulation ---"
+SHOW "Common     : " AND n_common AND " / 1000"
+SHOW "Rare       : " AND n_rare   AND " / 1000"
+SHOW "Epic       : " AND n_epic   AND " / 1000"
+SHOW "Legendary  : " AND n_legend AND " / 1000"
+
+NOTE: ── Gaussian (normal) distribution ─────────────────────────────────────────
+SHOW ""
+SHOW "--- Gaussian Samples (mean=100, sd=15 — like an IQ distribution) ---"
+MAKE samples BE []
+COUNT FROM 1 TO 200 AS _ {
+    MAKE s BE CALL rng GET gauss WITH 100, 15
+    PUSH s INTO samples
+}
+
+NOTE: count how many fall in each band
+MAKE b_under70 BE 0
+MAKE b_70      BE 0
+MAKE b_85      BE 0
+MAKE b_100     BE 0
+MAKE b_115     BE 0
+MAKE b_over130 BE 0
+FOR EACH s IN samples {
+    CHECK IF s IS LESS THAN 70 { MAKE b_under70 BE b_under70 + 1 }
+    CHECK IF s IS AT LEAST 70  {
+        CHECK IF s IS LESS THAN 85  { MAKE b_70  BE b_70  + 1 }
+        CHECK IF s IS AT LEAST 85   {
+            CHECK IF s IS LESS THAN 100 { MAKE b_85  BE b_85  + 1 }
+            CHECK IF s IS AT LEAST 100  {
+                CHECK IF s IS LESS THAN 115 { MAKE b_100 BE b_100 + 1 }
+                CHECK IF s IS AT LEAST 115  {
+                    CHECK IF s IS LESS THAN 130 { MAKE b_115    BE b_115    + 1 }
+                    CHECK IF s IS AT LEAST 130  { MAKE b_over130 BE b_over130 + 1 }
+                }
+            }
+        }
+    }
+}
+
+TEACH hbar USING n {
+    MAKE out BE ""
+    REPEAT n { MAKE out BE out AND "#" }
+    GIVE BACK out
+}
+SHOW "< 70   | " AND CALL hbar WITH b_under70 AND " (" AND b_under70  AND ")"
+SHOW "70-84  | " AND CALL hbar WITH b_70      AND " (" AND b_70       AND ")"
+SHOW "85-99  | " AND CALL hbar WITH b_85      AND " (" AND b_85       AND ")"
+SHOW "100-114| " AND CALL hbar WITH b_100     AND " (" AND b_100      AND ")"
+SHOW "115-129| " AND CALL hbar WITH b_115     AND " (" AND b_115      AND ")"
+SHOW ">= 130 | " AND CALL hbar WITH b_over130 AND " (" AND b_over130  AND ")"

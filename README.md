@@ -89,6 +89,7 @@ SHOW "You got it in " AND guesses AND " guesses!"
 | Error handling | `TRY { } CATCH e { }` |
 | Imports | `BRING IN "arrays"` |
 | Python bridge | `BRIDGE "math" AS m` |
+| Call bridge method | `CALL m GET sqrt WITH 16` |
 | Comments | `NOTE: anything here` |
 
 ---
@@ -117,6 +118,6 @@ ypool/
 │   ├── arrays.yp
 │   ├── strings.yp
 │   └── math.yp
-├── examples/         ← 14 example programs
+├── examples/         ← 19 example programs (15–19 show Python bridge)
 └── GUIDE.md          ← the complete language guide
 ```

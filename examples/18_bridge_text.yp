@@ -1,0 +1,121 @@
+NOTE: ── 18 TEXT PROCESSING with re, textwrap, string ───────────────────────────
+NOTE: Pattern matching, text wrapping, and string utilities from Python stdlib.
+
+BRIDGE "re"       AS re
+BRIDGE "textwrap" AS tw
+BRIDGE "string"   AS strmod
+
+NOTE: ── character sets from the string module ───────────────────────────────────
+SHOW "=== string module constants ==="
+SHOW "digits    : " AND strmod GET digits
+SHOW "lowercase : " AND strmod GET ascii_lowercase
+SHOW "uppercase : " AND strmod GET ascii_uppercase
+SHOW "punctuation: " AND strmod GET punctuation
+
+NOTE: ── regex: check if a string matches a pattern ─────────────────────────────
+SHOW ""
+SHOW "=== Regex Matching ==="
+
+MAKE email BE "user@example.com"
+MAKE pattern BE CALL re GET compile WITH "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
+MAKE m BE CALL re GET fullmatch WITH "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}", email
+SHOW "Is valid email '" AND email AND "': " AND IF m IS NOT NOTHING THEN "yes" ELSE "no"
+
+MAKE not_email BE "hello world"
+MAKE m2 BE CALL re GET fullmatch WITH "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}", not_email
+SHOW "Is valid email '" AND not_email AND "': " AND IF m2 IS NOT NOTHING THEN "yes" ELSE "no"
+
+NOTE: ── find all numbers in a string ────────────────────────────────────────────
+SHOW ""
+SHOW "=== Find All Matches ==="
+MAKE text1 BE "Order 42 items at $3.99 each, total: $167.58 (tax $13.40)"
+MAKE numbers BE CALL re GET findall WITH "[0-9]+\\.?[0-9]*", text1
+SHOW "Input  : " AND text1
+SHOW "Numbers: " AND numbers
+
+NOTE: ── find all words that start with a capital letter ─────────────────────────
+MAKE text2 BE "Alice and Bob went to New York with Charlie on Tuesday"
+MAKE caps BE CALL re GET findall WITH "[A-Z][a-z]+", text2
+SHOW ""
+SHOW "Input  : " AND text2
+SHOW "Capitals: " AND caps
+
+NOTE: ── substitution / replace ──────────────────────────────────────────────────
+SHOW ""
+SHOW "=== Substitution ==="
+MAKE dirty BE "Hello,   world!   Too   many   spaces."
+MAKE clean BE CALL re GET sub WITH "\\s+", " ", dirty
+SHOW "Before: " AND dirty
+SHOW "After : " AND clean
+
+NOTE: censor bad words
+MAKE msg BE "This darn thing is a heck of a problem"
+MAKE censored BE CALL re GET sub WITH "darn|heck", "****", msg
+SHOW "Censored: " AND censored
+
+NOTE: ── split by pattern ──────────────────────────────────────────────────────
+SHOW ""
+SHOW "=== Split ==="
+MAKE csv_messy BE "apple ,  banana,cherry  , date"
+MAKE items BE CALL re GET split WITH "\\s*,\\s*", csv_messy
+SHOW "Input : " AND csv_messy
+SHOW "Split : " AND items
+
+NOTE: ── textwrap ───────────────────────────────────────────────────────────────
+SHOW ""
+SHOW "=== Text Wrapping ==="
+MAKE long_text BE "ypool is a programming language that reads like plain English. Every keyword is written in ALL CAPS and your own names are in lowercase. There are no semicolons, no curly-brace confusion — just clear, readable code that anyone can understand."
+
+SHOW "--- wrapped at 50 chars ---"
+MAKE wrapped BE CALL tw GET fill WITH long_text, 50
+SHOW wrapped
+
+SHOW ""
+SHOW "--- wrapped at 40 chars, then indented ---"
+MAKE wrapped40 BE CALL tw GET fill WITH long_text, 40
+MAKE indented BE CALL tw GET indent WITH wrapped40, "    "
+SHOW indented
+
+NOTE: ── dedent / shorten ──────────────────────────────────────────────────────
+SHOW ""
+SHOW "=== Shorten (summary/teaser) ==="
+MAKE teaser BE CALL tw GET shorten WITH long_text, 80
+SHOW teaser
+
+NOTE: ── password strength checker (using regex) ─────────────────────────────────
+SHOW ""
+SHOW "=== Password Strength Checker ==="
+TEACH check_password USING pwd {
+    MAKE score BE 0
+    MAKE hints BE []
+    CHECK IF LENGTH OF pwd IS AT LEAST 8     { MAKE score BE score + 1 }
+    CHECK IF LENGTH OF pwd IS LESS THAN 8    { PUSH "needs 8+ chars" INTO hints }
+    MAKE has_upper BE CALL re GET search WITH "[A-Z]", pwd
+    CHECK IF has_upper IS NOT NOTHING { MAKE score BE score + 1 }
+    CHECK IF has_upper IS NOTHING     { PUSH "needs uppercase" INTO hints }
+    MAKE has_lower BE CALL re GET search WITH "[a-z]", pwd
+    CHECK IF has_lower IS NOT NOTHING { MAKE score BE score + 1 }
+    CHECK IF has_lower IS NOTHING     { PUSH "needs lowercase" INTO hints }
+    MAKE has_digit BE CALL re GET search WITH "[0-9]", pwd
+    CHECK IF has_digit IS NOT NOTHING { MAKE score BE score + 1 }
+    CHECK IF has_digit IS NOTHING     { PUSH "needs a digit" INTO hints }
+    MAKE has_special BE CALL re GET search WITH "[^a-zA-Z0-9]", pwd
+    CHECK IF has_special IS NOT NOTHING { MAKE score BE score + 1 }
+    CHECK IF has_special IS NOTHING     { PUSH "needs a special char" INTO hints }
+    MAKE label BE "weak"
+    CHECK IF score IS AT LEAST 3 { MAKE label BE "fair" }
+    CHECK IF score IS AT LEAST 4 { MAKE label BE "strong" }
+    CHECK IF score IS 5          { MAKE label BE "excellent" }
+    GIVE BACK {score: score, label: label, hints: hints}
+}
+
+MAKE passwords BE ["abc", "Password1", "Tr0ub4dor&3", "correct horse"]
+FOR EACH pwd IN passwords {
+    MAKE result BE CALL check_password WITH pwd
+    SHOW "'" AND pwd AND "'"
+    SHOW "  -> " AND result AT "label" AND " (score " AND result AT "score" AND "/5)"
+    MAKE tips BE result AT "hints"
+    CHECK IF LENGTH OF tips IS MORE THAN 0 {
+        SHOW "  tips: " AND tips
+    }
+}

@@ -1,0 +1,79 @@
+NOTE: ── 15 DATA ANALYSIS with Python's statistics module ──────────────────────
+
+BRIDGE "statistics" AS stats
+BRIDGE "math" AS m
+
+NOTE: ── helper: repeat a character n times ─────────────────────────────────────
+TEACH bar USING n {
+    MAKE out BE ""
+    REPEAT n { MAKE out BE out AND "#" }
+    GIVE BACK out
+}
+
+NOTE: ── a class of test scores ──────────────────────────────────────────────────
+
+MAKE scores BE [72, 85, 90, 61, 78, 95, 88, 74, 83, 92,
+               67, 79, 88, 91, 76, 84, 70, 96, 82, 80]
+
+SHOW "==================================="
+SHOW "        CLASS SCORE REPORT"
+SHOW "==================================="
+SHOW "Count    : " AND LENGTH OF scores
+SHOW "Mean     : " AND FORMAT CALL stats GET mean WITH scores TO 2
+SHOW "Median   : " AND CALL stats GET median WITH scores
+SHOW "Std Dev  : " AND FORMAT CALL stats GET stdev WITH scores TO 2
+SHOW "Variance : " AND FORMAT CALL stats GET variance WITH scores TO 2
+
+NOTE: ── min / max ───────────────────────────────────────────────────────────────
+MAKE lo BE FIRST OF scores
+MAKE hi BE FIRST OF scores
+FOR EACH s IN scores {
+    CHECK IF s IS LESS THAN lo { MAKE lo BE s }
+    CHECK IF s IS MORE THAN hi { MAKE hi BE s }
+}
+SHOW "Min      : " AND lo
+SHOW "Max      : " AND hi
+SHOW "Range    : " AND hi - lo
+
+NOTE: ── grade distribution bar chart ───────────────────────────────────────────
+
+TEACH letter USING s {
+    CHECK IF s IS AT LEAST 90 { GIVE BACK "A" }
+    CHECK IF s IS AT LEAST 80 { GIVE BACK "B" }
+    CHECK IF s IS AT LEAST 70 { GIVE BACK "C" }
+    CHECK IF s IS AT LEAST 60 { GIVE BACK "D" }
+    GIVE BACK "F"
+}
+
+MAKE dist BE TALLY OF MAP scores USING letter
+
+SHOW ""
+SHOW "-- Grade Distribution --"
+FOR EACH g IN ["A", "B", "C", "D", "F"] {
+    MAKE n BE IF HAS dist g THEN dist AT g ELSE 0
+    SHOW g AND " | " AND CALL bar WITH n AND " (" AND n AND ")"
+}
+
+NOTE: ── geometric mean of a portfolio (10% annual growth) ───────────────────────
+MAKE prices BE [100, 110, 121, 133.1, 146.41]
+MAKE log_sum BE 0
+FOR EACH p IN prices {
+    MAKE log_sum BE log_sum + LOG OF p
+}
+MAKE geo_mean BE CALL m GET exp WITH log_sum / LENGTH OF prices
+SHOW ""
+SHOW "-- Portfolio geometric mean: " AND FORMAT geo_mean TO 2 AND " --"
+
+NOTE: ── Pythagorean theorem with math.hypot ─────────────────────────────────────
+MAKE dx BE 9
+MAKE dy BE 40
+SHOW "-- Hypotenuse of " AND dx AND "/" AND dy AND " triangle: " AND FORMAT CALL m GET hypot WITH dx, dy TO 4 AND " --"
+
+NOTE: ── log2 and log10 via Python math module ──────────────────────────────────
+SHOW ""
+SHOW "-- Logarithms --"
+SHOW "log2(1024)  = " AND CALL m GET log2 WITH 1024
+SHOW "log10(1000) = " AND CALL m GET log10 WITH 1000
+SHOW "ceil(4.1)   = " AND CALL m GET ceil WITH 4.1
+SHOW "floor(4.9)  = " AND CALL m GET floor WITH 4.9
+SHOW "gcd(48, 18) = " AND CALL m GET gcd WITH 48, 18
