@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <!-- background pill -->
+  <rect width="16" height="16" rx="3" fill="#0097a7"/>
+  <!-- wave shape at bottom -->
+  <path d="M0 11 Q4 9 8 11 Q12 13 16 11 L16 16 L0 16 Z" fill="#006978" opacity="0.6"/>
+  <!-- yp text -->
+  <text x="8" y="11" font-family="'Courier New', monospace" font-size="8.5" font-weight="bold"
+        text-anchor="middle" fill="white" letter-spacing="-0.5">yp</text>
+</svg>

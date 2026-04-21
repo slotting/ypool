@@ -1,0 +1,47 @@
+{
+  "name": "ypool-language",
+  "displayName": "ypool Language Support",
+  "version": "1.0.0",
+  "publisher": "ypool",
+  "description": "Syntax highlighting and live error checking for ypool (.yp) files",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:ypool"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "ypool",
+        "extensions": [".yp"],
+        "aliases": ["ypool", "yp"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "ypool",
+        "scopeName": "source.ypool",
+        "path": "./syntaxes/ypool.tmLanguage.json"
+      }
+    ],
+    "iconThemes": [
+      {
+        "id": "ypool-icons",
+        "label": "Ypool Icons",
+        "path": "./icons/ypool-icon-theme.json"
+      }
+    ]
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.75.0"
+  }
+}

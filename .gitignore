@@ -1,0 +1,45 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.log
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+.env/
+
+# ── VS Code extension — Node ──────────────────────────────────────────────────
+vscode-extension/node_modules/
+vscode-extension/package-lock.json
+vscode-extension/*.vsix
+
+# ── Runtime / temp output ─────────────────────────────────────────────────────
+*.log
+story_out.json
+*.tmp
+*.bak
+
+# ── OS noise ──────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── History / secrets ─────────────────────────────────────────────────────────
+.ypool_history
+.ypool_rc
+.env
+*.pem
+*.key

@@ -1,0 +1,140 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "ypool",
+  "scopeName": "source.ypool",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#interpolated-string" },
+    { "include": "#string-double" },
+    { "include": "#string-single" },
+    { "include": "#number" },
+    { "include": "#constant-language" },
+    { "include": "#keyword-control" },
+    { "include": "#keyword-declaration" },
+    { "include": "#keyword-call" },
+    { "include": "#keyword-io" },
+    { "include": "#keyword-import" },
+    { "include": "#keyword-operator-arithmetic" },
+    { "include": "#keyword-operator-logical" },
+    { "include": "#keyword-operator-comparison" },
+    { "include": "#keyword-combine" },
+    { "include": "#support-function-array" },
+    { "include": "#support-function-builtin" },
+    { "include": "#function-definition" },
+    { "include": "#function-call" },
+    { "include": "#variable" },
+    { "include": "#symbol-operators" }
+  ],
+  "repository": {
+    "comments": {
+      "match": "NOTE:.*$",
+      "name": "comment.line.ypool"
+    },
+    "interpolated-string": {
+      "begin": "\\$\"",
+      "end": "\"",
+      "name": "string.quoted.double.interpolated.ypool",
+      "patterns": [
+        {
+          "match": "\\{[a-z][a-z0-9_]*\\}",
+          "name": "variable.other.ypool"
+        }
+      ]
+    },
+    "string-double": {
+      "begin": "\"",
+      "end": "\"",
+      "name": "string.quoted.double.ypool",
+      "patterns": [
+        {
+          "match": "\\\\.",
+          "name": "constant.character.escape.ypool"
+        }
+      ]
+    },
+    "string-single": {
+      "begin": "'",
+      "end": "'",
+      "name": "string.quoted.single.ypool",
+      "patterns": [
+        {
+          "match": "\\\\.",
+          "name": "constant.character.escape.ypool"
+        }
+      ]
+    },
+    "number": {
+      "match": "\\b\\d+(\\.\\d+)?\\b",
+      "name": "constant.numeric.ypool"
+    },
+    "constant-language": {
+      "match": "\\b(YEAH|NAH|NOTHING)\\b",
+      "name": "constant.language.ypool"
+    },
+    "keyword-control": {
+      "match": "\\b(CHECK|IF|OTHERWISE|KEEP|GOING|WHILE|FOR|EACH|IN|COUNT|FROM|TO|AS|MATCH|STOP|SKIP|REPEAT|TRY|CATCH|THROW|ASSERT)\\b",
+      "name": "keyword.control.ypool"
+    },
+    "keyword-declaration": {
+      "match": "\\b(MAKE|FIX|BE|TEACH|ASYNC|GIVE|BACK)\\b",
+      "name": "keyword.declaration.ypool"
+    },
+    "keyword-call": {
+      "match": "\\b(CALL|WITH|AWAIT|RACE)\\b",
+      "name": "keyword.other.call.ypool"
+    },
+    "keyword-io": {
+      "match": "\\b(SHOW|ASK|FETCH|READ|WRITE|PARSE|DUMP|JSON|LIST|FILES|PATH|ENV|ERROR|TODAY|NOW)\\b",
+      "name": "keyword.other.io.ypool"
+    },
+    "keyword-import": {
+      "match": "\\b(BRING|BRIDGE|MEMOIZE|PARTIAL)\\b",
+      "name": "keyword.other.import.ypool"
+    },
+    "keyword-operator-arithmetic": {
+      "match": "\\b(PLUS|MINUS|TIMES|DIVIDED|BY|MOD|POWER)\\b",
+      "name": "keyword.operator.arithmetic.ypool"
+    },
+    "keyword-operator-logical": {
+      "match": "\\b(AND|OR|ALSO|NOT|EITHER)\\b",
+      "name": "keyword.operator.logical.ypool"
+    },
+    "keyword-operator-comparison": {
+      "match": "\\b(IS|MORE|LESS|THAN|AT|LEAST|MOST|BETWEEN|CONTAINS|FITS|STARTS|ENDS)\\b",
+      "name": "keyword.operator.comparison.ypool"
+    },
+    "keyword-combine": {
+      "match": "\\b(COMBINE|IT|USING|DEFAULT|THEN|ELSE)\\b",
+      "name": "keyword.other.ypool"
+    },
+    "support-function-array": {
+      "match": "\\b(PUSH|INTO|POP|GET|UPDATE|KEYS|VALUES|HAS|JOIN|SORT|REVERSE|REMOVE|MERGE|UNIQUE|FLATTEN|ZIP|TALLY|CLAMP|GROUP|ALL|WHERE|MAP|FILTER|REDUCE|START|PIPE|FIND)\\b",
+      "name": "support.function.array.ypool"
+    },
+    "support-function-builtin": {
+      "match": "\\b(LENGTH|OF|UPCASE|DOWNCASE|FLOOR|CEIL|SQRT|ABS|SPLIT|TRIM|RANDOM|KIND|ROUND|SLICE|REPLACE|FORMAT|FIRST|LAST|AVERAGE|TOTAL|LOG|SIN|COS|TAN|PI|E)\\b",
+      "name": "support.function.builtin.ypool"
+    },
+    "function-definition": {
+      "match": "\\b(ASYNC\\s+)?TEACH\\s+([a-z][a-z0-9_]*)",
+      "captures": {
+        "1": { "name": "keyword.declaration.ypool" },
+        "2": { "name": "entity.name.function.ypool" }
+      }
+    },
+    "function-call": {
+      "match": "\\bCALL\\s+([a-z][a-z0-9_]*)",
+      "captures": {
+        "1": { "name": "entity.name.function.ypool" }
+      }
+    },
+    "variable": {
+      "match": "\\b[a-z][a-z0-9_]*\\b",
+      "name": "variable.other.ypool"
+    },
+    "symbol-operators": {
+      "match": "[+\\-*/%]",
+      "name": "keyword.operator.symbol.ypool"
+    }
+  }
+}
