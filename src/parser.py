@@ -79,6 +79,8 @@ class Parser:
         if t == TT.LIST:    return {'type': 'CallStmt', 'call': self._parse_list_files()}
         if t == TT.MEMOIZE: return self.parse_memoize()
         if t == TT.BRIDGE:  return self.parse_bridge()
+        if t == TT.ASYNC:   return self.parse_async_teach()
+        if t == TT.AWAIT:   return {'type': 'CallStmt', 'call': self._parse_await_expr()}
         raise YPoolError(
             f'Unknown statement "{self.current().value}"',
             self.current().line
@@ -392,6 +394,47 @@ class Parser:
         message = self.parse_primary()
         return {'type': 'Assert', 'condition': condition, 'message': message, 'line': line}
 
+    def parse_async_teach(self) -> dict:
+        """ASYNC TEACH name USING params { body }"""
+        self.advance()  # ASYNC
+        self.expect(TT.TEACH)
+        name = self.expect(TT.IDENTIFIER).value
+        params = []
+        variadic = None
+        if self.match(TT.USING):
+            while True:
+                if self.current().type == TT.SPREAD:
+                    self.advance()
+                    variadic = self.expect(TT.IDENTIFIER).value
+                    self.match(TT.COMMA)
+                    break
+                pname = self.expect(TT.IDENTIFIER).value
+                default = None
+                if self.match(TT.DEFAULT):
+                    default = self.parse_unary()
+                params.append((pname, default))
+                if not self.match(TT.COMMA):
+                    break
+        body = self.parse_block()
+        return {'type': 'AsyncTeach', 'name': name, 'params': params,
+                'variadic': variadic, 'body': body}
+
+    def _parse_await_expr(self) -> dict:
+        """AWAIT expr  |  AWAIT ALL expr  |  AWAIT RACE expr
+
+        AWAIT ALL and AWAIT RACE accept any expression that evaluates to a
+        list of coroutines — e.g. a list variable, MAP ... USING ..., or
+        a literal array [c1, c2, c3] of pre-built coroutine variables.
+        """
+        self.advance()  # AWAIT
+        if self.current().type == TT.ALL:
+            self.advance()
+            return {'type': 'AwaitAll', 'expr': self.parse_condition()}
+        if self.current().type == TT.RACE:
+            self.advance()
+            return {'type': 'AwaitRace', 'expr': self.parse_condition()}
+        return {'type': 'Await', 'expr': self.parse_condition()}
+
     # ── block ──────────────────────────────────────────────────────────────────
 
     def parse_block(self) -> list:
@@ -595,6 +638,10 @@ class Parser:
 
     def parse_primary(self) -> dict:
         t = self.current()
+
+        # AWAIT as expression: MAKE result BE AWAIT CALL fn WITH args
+        if t.type == TT.AWAIT:
+            return self._parse_await_expr()
 
         # Unary minus at primary level (for builtin args like ABS OF -5)
         if t.type == TT.MINUS:

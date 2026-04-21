@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 import types as _types
@@ -55,7 +56,7 @@ _STMT_STARTS = {
     'MAKE', 'FIX', 'SHOW', 'CHECK', 'MATCH', 'KEEP', 'FOR', 'COUNT',
     'TEACH', 'GIVE', 'COMBINE', 'PUSH', 'POP', 'UPDATE', 'REMOVE',
     'SORT', 'REVERSE', 'STOP', 'SKIP', 'TRY', 'THROW', 'WRITE', 'BRING',
-    'REPEAT', 'ASSERT', 'MEMOIZE', 'BRIDGE',
+    'REPEAT', 'ASSERT', 'MEMOIZE', 'BRIDGE', 'ASYNC', 'AWAIT',
 }
 
 # ── brace-depth counter ────────────────────────────────────────────────────────
@@ -196,7 +197,7 @@ def _run_command(cmd_line: str, interp: Interpreter) -> tuple[bool, Interpreter]
                     src = f.read()
                 tokens = Lexer(src).tokenize()
                 ast    = Parser(tokens).parse()
-                interp.run(ast)
+                asyncio.run(interp.run(ast))
                 _setup_completion(interp)
             except FileNotFoundError:
                 print(_c(f'  not found: {arg}', RED))
@@ -240,7 +241,7 @@ def _try_as_expr(source: str, interp: Interpreter) -> bool:
         expr   = p.parse_condition()
         if not p.at_end():
             return False
-        val = interp.eval(expr, interp.globals)
+        val = asyncio.run(interp.eval(expr, interp.globals))
         if val is not None:
             print(_c(f'=> {interp.ypool_str(val)}', GREEN))
         return True
@@ -260,7 +261,7 @@ def run_repl(interp: Interpreter = None) -> None:
             with open(rc_path, 'r', encoding='utf-8') as f:
                 rc_src = f.read()
             tokens = Lexer(rc_src).tokenize()
-            interp.run(Parser(tokens).parse())
+            asyncio.run(interp.run(Parser(tokens).parse()))
             print(_c(f'  loaded ~/.ypool_rc', DIM))
         except Exception as e:
             print(_c(f'[rc error] {e}', RED))
@@ -301,7 +302,7 @@ def run_repl(interp: Interpreter = None) -> None:
 
             tokens = Lexer(source).tokenize()
             ast    = Parser(tokens).parse()
-            result = interp.run(ast)
+            result = asyncio.run(interp.run(ast))
 
             if result is not None:
                 print(_c(f'=> {interp.ypool_str(result)}', GREEN))

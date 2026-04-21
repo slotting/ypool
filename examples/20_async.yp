@@ -1,0 +1,170 @@
+NOTE: ── 20 ASYNC / AWAIT ────────────────────────────────────────────────────────
+NOTE: Run tasks at the same time instead of one at a time.
+NOTE:
+NOTE: Key ideas:
+NOTE:   ASYNC TEACH fn USING x { ... }   define an async function
+NOTE:   CALL fn WITH arg                  returns a coroutine (not yet run)
+NOTE:   AWAIT CALL fn WITH arg            actually runs it and gets the result
+NOTE:   AWAIT ALL list_of_coros           runs all at once, returns list of results
+NOTE:   AWAIT RACE list_of_coros          runs all, returns whichever finishes first
+
+NOTE: ── 1. basic async function ──────────────────────────────────────────────────
+
+SHOW "=== 1. Basic Async Function ==="
+
+ASYNC TEACH greet USING name {
+    GIVE BACK "Hello, " AND name AND "!"
+}
+
+NOTE: CALL on an async function gives back a coroutine object — not the result
+MAKE coro BE CALL greet WITH "Alice"
+SHOW "Before AWAIT — kind : " AND KIND OF coro
+SHOW "Before AWAIT — value: " AND coro
+
+NOTE: AWAIT runs the coroutine and gives the real result
+MAKE result BE AWAIT coro
+SHOW "After  AWAIT — value: " AND result
+
+NOTE: ── 2. AWAIT ALL with MAP ────────────────────────────────────────────────────
+
+SHOW ""
+SHOW "=== 2. AWAIT ALL — run many tasks at once ==="
+
+ASYNC TEACH fetch_user USING id {
+    NOTE: in a real program this would be an actual HTTP request
+    MAKE fake_data BE {id: id, name: "User" AND id, score: id * 17}
+    GIVE BACK fake_data
+}
+
+NOTE: MAP with an ASYNC function produces a list of coroutines
+MAKE ids BE [1, 2, 3, 4, 5]
+MAKE coros BE MAP ids USING fetch_user
+
+SHOW "Coroutines ready: " AND LENGTH OF coros
+SHOW "Running all 5 at once..."
+
+MAKE users BE AWAIT ALL coros
+
+SHOW "Got " AND LENGTH OF users AND " users:"
+FOR EACH u IN users {
+    SHOW "  id=" AND u GET id AND "  name=" AND u GET name AND "  score=" AND u GET score
+}
+
+NOTE: ── 3. AWAIT RACE — first to finish wins ─────────────────────────────────────
+
+SHOW ""
+SHOW "=== 3. AWAIT RACE — fastest task wins ==="
+
+ASYNC TEACH slow_source USING label {
+    GIVE BACK label AND " responded"
+}
+
+ASYNC TEACH fast_source USING label {
+    GIVE BACK label AND " responded"
+}
+
+NOTE: build each coroutine first, then collect and race
+NOTE: (use variables, not inline CALL in a list — avoids comma ambiguity)
+MAKE ra BE CALL slow_source WITH "Server A"
+MAKE rb BE CALL fast_source WITH "Server B"
+MAKE rc BE CALL slow_source WITH "Server C"
+MAKE race_coros BE [ra, rb, rc]
+MAKE winner BE AWAIT RACE race_coros
+SHOW "First response: " AND winner
+
+NOTE: ── 4. chained async calls ──────────────────────────────────────────────────
+
+SHOW ""
+SHOW "=== 4. Chained Async Calls ==="
+
+ASYNC TEACH get_score USING player {
+    GIVE BACK LENGTH OF player * 10
+}
+
+ASYNC TEACH get_profile USING player {
+    MAKE score BE AWAIT CALL get_score WITH player
+    MAKE rank  BE IF score IS MORE THAN 45 THEN "Gold" ELSE "Silver"
+    GIVE BACK {name: player, score: score, rank: rank}
+}
+
+MAKE alice BE AWAIT CALL get_profile WITH "Alice"
+MAKE bob   BE AWAIT CALL get_profile WITH "Bob"
+
+SHOW alice GET name AND "  score=" AND alice GET score AND "  rank=" AND alice GET rank
+SHOW bob   GET name AND "  score=" AND bob   GET score AND "  rank=" AND bob   GET rank
+
+NOTE: ── 5. async error handling ─────────────────────────────────────────────────
+
+SHOW ""
+SHOW "=== 5. Async Error Handling ==="
+
+ASYNC TEACH safe_divide USING a, b {
+    CHECK IF b IS 0 {
+        THROW {type: "DivideByZero", msg: "cannot divide " AND a AND " by zero"}
+    }
+    GIVE BACK a / b
+}
+
+TRY {
+    MAKE ok  BE AWAIT CALL safe_divide WITH 10, 2
+    SHOW "10 / 2 = " AND ok
+    MAKE bad BE AWAIT CALL safe_divide WITH 5, 0
+    SHOW "Should not reach here"
+} CATCH err {
+    SHOW "Caught: " AND err GET msg
+}
+
+NOTE: ── 6. parallel fan-out with MAP + AWAIT ALL ─────────────────────────────────
+
+SHOW ""
+SHOW "=== 6. Parallel Fan-out and Collect ==="
+
+ASYNC TEACH square USING n {
+    GIVE BACK n * n
+}
+
+ASYNC TEACH cube USING n {
+    GIVE BACK n * n * n
+}
+
+MAKE numbers BE [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+MAKE squares BE AWAIT ALL MAP numbers USING square
+MAKE cubes   BE AWAIT ALL MAP numbers USING cube
+
+SHOW "Numbers: " AND numbers
+SHOW "Squares: " AND squares
+SHOW "Cubes  : " AND cubes
+
+NOTE: sum them up
+MAKE sq_total BE 0
+MAKE cu_total BE 0
+FOR EACH s IN squares { MAKE sq_total BE sq_total + s }
+FOR EACH c IN cubes   { MAKE cu_total BE cu_total + c }
+SHOW "Sum of squares : " AND sq_total
+SHOW "Sum of cubes   : " AND cu_total
+
+NOTE: ── 7. async FETCH — non-blocking HTTP ──────────────────────────────────────
+
+SHOW ""
+SHOW "=== 7. Async HTTP Fetch ==="
+SHOW "Fetching a public JSON API..."
+
+ASYNC TEACH load_post USING id {
+    MAKE url  BE "https://jsonplaceholder.typicode.com/posts/" AND id
+    TRY {
+        MAKE body BE FETCH url
+        MAKE data BE PARSE JSON body
+        GIVE BACK data GET title
+    } CATCH err {
+        GIVE BACK "(fetch failed: " AND err AND ")"
+    }
+}
+
+NOTE: fetch posts 1, 2, 3 all at the same time
+MAKE post_coros BE MAP [1, 2, 3] USING load_post
+MAKE titles BE AWAIT ALL post_coros
+
+SHOW "Post 1 title: " AND titles AT 0
+SHOW "Post 2 title: " AND titles AT 1
+SHOW "Post 3 title: " AND titles AT 2

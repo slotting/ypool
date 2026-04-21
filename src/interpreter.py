@@ -1,3 +1,4 @@
+import asyncio
 import math
 import random as _random
 import json as _json
@@ -34,12 +35,9 @@ class PyBridge:
         val = getattr(self.module, attr, _MISSING)
         if val is _MISSING:
             raise YPoolError(f'Bridge "{self.name}" has no attribute "{attr}"')
-        # Modules and classes → sub-bridge so chains like
-        #   CALL bridge GET ClassName GET classmethod WITH args  work.
         if _is_bridgeable(val):
             return PyBridge(val, f'{self.name}.{attr}')
         if callable(val):
-            # Wrap so that returned rich objects are also auto-bridged.
             sub_name = f'{self.name}.{attr}'
             def _make_caller(fn, name):
                 def _caller(args):
@@ -52,7 +50,6 @@ class PyBridge:
         return val
 
     def __call__(self, args):
-        """Allow a PyBridge wrapping a callable (class/func) to be called directly."""
         result = self.module(*args)
         if _is_bridgeable(result):
             return PyBridge(result, self.name + '()')
@@ -81,30 +78,36 @@ class PyBridge:
 
 _MISSING = object()
 
-# Primitives we should NOT wrap as a PyBridge even if they have __dict__
 _PRIMITIVE_TYPES = (int, float, str, bool, bytes, bytearray,
                     list, tuple, dict, set, frozenset, type(None))
 
 def _is_bridgeable(val):
-    """Return True if val should be wrapped as a PyBridge for attribute chaining.
-
-    Modules and classes get bridged so their sub-attributes are reachable.
-    Non-callable, non-primitive instances (date, match, etc.) also get bridged
-    so their methods are callable.  Plain functions/methods stay as callables.
-    """
     if isinstance(val, _PRIMITIVE_TYPES):
         return False
     if _inspect.ismodule(val) or _inspect.isclass(val):
         return True
     if callable(val):
-        return False   # plain function / bound method — keep as callable lambda
-    return True        # rich instance (date, match, etc.) — wrap for method access
+        return False
+    return True
+
+
+# ── async coroutine wrapper ────────────────────────────────────────────────────
+
+class YPoolCoroutine:
+    """
+    Returned when an ASYNC TEACH function is called without AWAIT.
+    Wrap the Python coroutine so ypool can inspect and await it later.
+    """
+    def __init__(self, coro):
+        self.coro = coro
+
+    def __repr__(self):
+        return '<coroutine>'
 
 
 # ── partial application wrapper ────────────────────────────────────────────────
 
 class YPoolPartial:
-    """Stores a function + pre-applied arguments for partial application."""
     def __init__(self, fn, partial_args):
         self.fn           = fn
         self.partial_args = list(partial_args)
@@ -117,7 +120,6 @@ class YPoolPartial:
 # ── memoized wrapper ───────────────────────────────────────────────────────────
 
 class YPoolMemoized:
-    """Caches results of a function keyed by repr(args)."""
     def __init__(self, fn):
         self.fn    = fn
         self.cache = {}
@@ -167,15 +169,17 @@ class Environment:
 # ── function object ────────────────────────────────────────────────────────────
 
 class YPoolFunction:
-    def __init__(self, name, params, body, closure, variadic=None):
+    def __init__(self, name, params, body, closure, variadic=None, is_async=False):
         self.name     = name
-        self.params   = params    # list of (param_name, default_node_or_None)
+        self.params   = params
         self.body     = body
         self.closure  = closure
-        self.variadic = variadic  # str name for rest args, or None
+        self.variadic = variadic
+        self.is_async = is_async
 
     def __repr__(self):
-        return f'<function {self.name}>'
+        prefix = 'async function' if self.is_async else 'function'
+        return f'<{prefix} {self.name}>'
 
 
 # ── interpreter ────────────────────────────────────────────────────────────────
@@ -183,45 +187,44 @@ class YPoolFunction:
 class Interpreter:
     def __init__(self):
         self.globals    = Environment()
-        self.call_stack = []   # list of function names for stack traces
+        self.call_stack = []
         self._setup_builtins()
 
     def _setup_builtins(self):
         g = self.globals
-        # type conversions
         g.define('asNumber', lambda args: float(args[0]) if args else 0)
         g.define('asText',   lambda args: self.ypool_str(args[0]) if args else '')
         g.define('asBool',   lambda args: bool(args[0]) if args else False)
-        # math helpers
         g.define('max',      lambda args: max(args))
         g.define('min',      lambda args: min(args))
         g.define('sum',      lambda args: sum(args[0]) if args and isinstance(args[0], list) else sum(args))
-        # regex helpers (callable from ypool via CALL)
         g.define('regex_test',    lambda args: bool(_re.search(str(args[1]), str(args[0]))))
         g.define('regex_find',    lambda args: (m.group(0) if (m := _re.search(str(args[1]), str(args[0]))) else None))
         g.define('regex_all',     lambda args: _re.findall(str(args[1]), str(args[0])))
         g.define('regex_replace', lambda args: _re.sub(str(args[1]), str(args[2]), str(args[0])))
 
-    def run(self, program, env=None):
+    # ── top-level entry ────────────────────────────────────────────────────────
+
+    async def run(self, program, env=None):
         env = env or self.globals
         result = None
         for stmt in program['body']:
-            result = self.exec_stmt(stmt, env)
+            result = await self.exec_stmt(stmt, env)
         return result
 
-    def exec_block(self, stmts, env):
+    async def exec_block(self, stmts, env):
         result = None
         for stmt in stmts:
-            result = self.exec_stmt(stmt, env)
+            result = await self.exec_stmt(stmt, env)
         return result
 
     # ── statements ─────────────────────────────────────────────────────────────
 
-    def exec_stmt(self, stmt, env):
+    async def exec_stmt(self, stmt, env):
         t = stmt['type']
 
         if t == 'Make':
-            val = self.eval(stmt['value'], env)
+            val  = await self.eval(stmt['value'], env)
             name = stmt['name']
             if env.has(name):
                 env.set(name, val)
@@ -229,44 +232,44 @@ class Interpreter:
                 env.define(name, val)
 
         elif t == 'Fix':
-            val = self.eval(stmt['value'], env)
+            val = await self.eval(stmt['value'], env)
             env.define_const(stmt['name'], val)
 
         elif t == 'Show':
-            print(self.ypool_str(self.eval(stmt['value'], env)))
+            print(self.ypool_str(await self.eval(stmt['value'], env)))
 
         elif t == 'Check':
-            if self.truthy(self.eval(stmt['condition'], env)):
-                self.exec_block(stmt['then'], Environment(env))
+            if self.truthy(await self.eval(stmt['condition'], env)):
+                await self.exec_block(stmt['then'], Environment(env))
             elif stmt['otherwise']:
-                self.exec_block(stmt['otherwise'], Environment(env))
+                await self.exec_block(stmt['otherwise'], Environment(env))
 
         elif t == 'Keep':
-            while self.truthy(self.eval(stmt['condition'], env)):
+            while self.truthy(await self.eval(stmt['condition'], env)):
                 try:
-                    self.exec_block(stmt['body'], Environment(env))
+                    await self.exec_block(stmt['body'], Environment(env))
                 except ContinueSignal:
                     continue
                 except BreakSignal:
                     break
 
         elif t == 'ForEach':
-            iterable = self.eval(stmt['iterable'], env)
+            iterable = await self.eval(stmt['iterable'], env)
             if not isinstance(iterable, (list, str)):
                 raise YPoolError('FOR EACH requires an array or string')
             for item in iterable:
                 loop_env = Environment(env)
                 loop_env.define(stmt['var'], item)
                 try:
-                    self.exec_block(stmt['body'], loop_env)
+                    await self.exec_block(stmt['body'], loop_env)
                 except ContinueSignal:
                     continue
                 except BreakSignal:
                     break
 
         elif t == 'Count':
-            start = int(self.eval(stmt['start'], env))
-            end   = int(self.eval(stmt['end'],   env))
+            start = int(await self.eval(stmt['start'], env))
+            end   = int(await self.eval(stmt['end'],   env))
             step  = 1 if end >= start else -1
             for i in range(start, end + step, step):
                 loop_env = Environment(env)
@@ -274,51 +277,55 @@ class Interpreter:
                     loop_env.define(stmt['var'], i)
                 loop_env.define('it', i)
                 try:
-                    self.exec_block(stmt['body'], loop_env)
+                    await self.exec_block(stmt['body'], loop_env)
                 except ContinueSignal:
                     continue
                 except BreakSignal:
                     break
 
         elif t == 'Match':
-            subject = self.eval(stmt['subject'], env)
+            subject = await self.eval(stmt['subject'], env)
             matched = False
             for case in stmt['cases']:
                 op = case.get('op', '==')
                 if op == 'between':
-                    low  = self.eval(case['low'],  env)
-                    high = self.eval(case['high'], env)
+                    low  = await self.eval(case['low'],  env)
+                    high = await self.eval(case['high'], env)
                     hit  = low <= subject <= high
                 else:
-                    pattern_val = self.eval(case['value'], env)
+                    pattern_val = await self.eval(case['value'], env)
                     hit = self._match_op(subject, op, pattern_val)
                 if hit:
-                    self.exec_block(case['body'], Environment(env))
+                    await self.exec_block(case['body'], Environment(env))
                     matched = True
                     break
             if not matched and stmt.get('default'):
-                self.exec_block(stmt['default'], Environment(env))
+                await self.exec_block(stmt['default'], Environment(env))
 
         elif t == 'Teach':
             fn = YPoolFunction(
-                stmt['name'],
-                stmt['params'],
-                stmt['body'],
-                env,
-                stmt.get('variadic')
+                stmt['name'], stmt['params'], stmt['body'], env,
+                stmt.get('variadic'), is_async=False
+            )
+            env.define(stmt['name'], fn)
+
+        elif t == 'AsyncTeach':
+            fn = YPoolFunction(
+                stmt['name'], stmt['params'], stmt['body'], env,
+                stmt.get('variadic'), is_async=True
             )
             env.define(stmt['name'], fn)
 
         elif t == 'CallStmt':
-            return self.eval(stmt['call'], env)
+            return await self.eval(stmt['call'], env)
 
         elif t == 'Give':
-            raise ReturnSignal(self.eval(stmt['value'], env))
+            raise ReturnSignal(await self.eval(stmt['value'], env))
 
         elif t == 'Combine':
             result = self._smart_add(
-                self.eval(stmt['left'],  env),
-                self.eval(stmt['right'], env)
+                await self.eval(stmt['left'],  env),
+                await self.eval(stmt['right'], env)
             )
             if stmt['action'] == 'show':
                 print(self.ypool_str(result))
@@ -330,7 +337,7 @@ class Interpreter:
                     env.define(name, result)
 
         elif t == 'Push':
-            val = self.eval(stmt['value'], env)
+            val = await self.eval(stmt['value'], env)
             arr = env.get(stmt['name'])
             if not isinstance(arr, list):
                 raise YPoolError(f'"{stmt["name"]}" is not an array')
@@ -346,8 +353,8 @@ class Interpreter:
 
         elif t == 'UpdateIndex':
             obj   = env.get(stmt['name'])
-            index = self.eval(stmt['index'], env)
-            value = self.eval(stmt['value'], env)
+            index = await self.eval(stmt['index'], env)
+            value = await self.eval(stmt['value'], env)
             if isinstance(obj, dict):
                 obj[index] = value
             elif isinstance(obj, list):
@@ -361,14 +368,14 @@ class Interpreter:
 
         elif t == 'UpdateKey':
             obj   = env.get(stmt['name'])
-            value = self.eval(stmt['value'], env)
+            value = await self.eval(stmt['value'], env)
             if not isinstance(obj, dict):
                 raise YPoolError(f'"{stmt["name"]}" is not a dict')
             obj[stmt['key']] = value
 
         elif t == 'RemoveAt':
             arr   = env.get(stmt['name'])
-            index = int(self.eval(stmt['index'], env))
+            index = int(await self.eval(stmt['index'], env))
             if not isinstance(arr, list):
                 raise YPoolError(f'"{stmt["name"]}" is not an array')
             if index < 0 or index >= len(arr):
@@ -389,7 +396,7 @@ class Interpreter:
 
         elif t == 'Try':
             try:
-                self.exec_block(stmt['body'], Environment(env))
+                await self.exec_block(stmt['body'], Environment(env))
             except (ThrowSignal, YPoolError) as e:
                 err_val = e.value if isinstance(e, ThrowSignal) else str(e)
                 if not hasattr(e, '_ypool_stack'):
@@ -402,18 +409,18 @@ class Interpreter:
                             continue
                     catch_env = Environment(env)
                     catch_env.define(catch['err_var'], err_val)
-                    self.exec_block(catch['body'], catch_env)
+                    await self.exec_block(catch['body'], catch_env)
                     matched = True
                     break
                 if not matched:
                     raise
 
         elif t == 'Throw':
-            raise ThrowSignal(self.eval(stmt['value'], env))
+            raise ThrowSignal(await self.eval(stmt['value'], env))
 
         elif t == 'WriteFile':
-            path    = self.ypool_str(self.eval(stmt['path'],    env))
-            content = self.ypool_str(self.eval(stmt['content'], env))
+            path    = self.ypool_str(await self.eval(stmt['path'],    env))
+            content = self.ypool_str(await self.eval(stmt['content'], env))
             try:
                 with open(path, 'w', encoding='utf-8') as f:
                     f.write(content)
@@ -425,13 +432,13 @@ class Interpreter:
             if not isinstance(arr, list):
                 raise YPoolError(f'"{stmt["name"]}" is not an array')
             if stmt.get('field') is not None:
-                field = self.ypool_str(self.eval(stmt['field'], env))
+                field = self.ypool_str(await self.eval(stmt['field'], env))
                 arr.sort(key=lambda x: x.get(field, '') if isinstance(x, dict) else x)
             else:
                 arr.sort(key=lambda x: (isinstance(x, str), x))
 
         elif t == 'DestructureArray':
-            source = self.eval(stmt['source'], env)
+            source = await self.eval(stmt['source'], env)
             if not isinstance(source, list):
                 raise YPoolError('Array destructuring requires an array')
             for i, name in enumerate(stmt['names']):
@@ -442,7 +449,7 @@ class Interpreter:
                     env.define(name, val)
 
         elif t == 'DestructureDict':
-            source = self.eval(stmt['source'], env)
+            source = await self.eval(stmt['source'], env)
             if not isinstance(source, dict):
                 raise YPoolError('Dict destructuring requires a dict')
             for key in stmt['keys']:
@@ -453,32 +460,32 @@ class Interpreter:
                     env.define(key, val)
 
         elif t == 'Assert':
-            if not self.truthy(self.eval(stmt['condition'], env)):
-                msg = self.ypool_str(self.eval(stmt['message'], env))
+            if not self.truthy(await self.eval(stmt['condition'], env)):
+                msg = self.ypool_str(await self.eval(stmt['message'], env))
                 raise ThrowSignal({'type': 'AssertionError', 'msg': msg})
 
         elif t == 'BringIn':
-            path_str = self.ypool_str(self.eval(stmt['path'], env))
+            path_str = self.ypool_str(await self.eval(stmt['path'], env))
             ns = stmt.get('namespace')
             if ns:
                 ns_env = Environment()
-                self._bring_in(path_str, ns_env)
+                await self._bring_in(path_str, ns_env)
                 module = dict(ns_env.vars)
                 if env.has(ns):
                     env.set(ns, module)
                 else:
                     env.define(ns, module)
             else:
-                self._bring_in(path_str, env)
+                await self._bring_in(path_str, env)
 
         elif t == 'Repeat':
-            count = int(self.eval(stmt['count'], env))
+            count = int(await self.eval(stmt['count'], env))
             for i in range(count):
                 loop_env = Environment(env)
                 if stmt['var']:
                     loop_env.define(stmt['var'], i)
                 try:
-                    self.exec_block(stmt['body'], loop_env)
+                    await self.exec_block(stmt['body'], loop_env)
                 except ContinueSignal:
                     continue
                 except BreakSignal:
@@ -497,7 +504,7 @@ class Interpreter:
 
         elif t == 'Bridge':
             import importlib
-            module_name = self.ypool_str(self.eval(stmt['module'], env))
+            module_name = self.ypool_str(await self.eval(stmt['module'], env))
             try:
                 module = importlib.import_module(module_name)
             except ImportError as e:
@@ -516,7 +523,7 @@ class Interpreter:
 
     # ── expressions ────────────────────────────────────────────────────────────
 
-    def eval(self, node, env):
+    async def eval(self, node, env):
         t = node['type']
 
         if t == 'Number':     return node['value']
@@ -533,48 +540,51 @@ class Interpreter:
                 return False
 
         if t == 'SafeGet':
-            obj = self.eval(node['obj'], env)
-            if isinstance(obj, dict):
-                if node['key'] in obj:
-                    return obj[node['key']]
-            return self.eval(node['fallback'], env)
+            obj = await self.eval(node['obj'], env)
+            if isinstance(obj, dict) and node['key'] in obj:
+                return obj[node['key']]
+            return await self.eval(node['fallback'], env)
 
         if t == 'InterpString':
-            return self._interpolate(node['value'], env)
+            return await self._interpolate(node['value'], env)
 
         if t == 'Ternary':
-            cond = self.eval(node['condition'], env)
-            return self.eval(node['then'], env) if self.truthy(cond) else self.eval(node['else'], env)
+            cond = await self.eval(node['condition'], env)
+            return await self.eval(node['then'], env) if self.truthy(cond) \
+                   else await self.eval(node['else'], env)
 
         if t == 'NullCoalesce':
-            val = self.eval(node['left'], env)
-            return val if val is not None else self.eval(node['right'], env)
+            val = await self.eval(node['left'], env)
+            return val if val is not None else await self.eval(node['right'], env)
 
         if t == 'ArrayLiteral':
             result = []
             for item in node['items']:
                 if item['type'] == 'Spread':
-                    spread_val = self.eval(item['value'], env)
+                    spread_val = await self.eval(item['value'], env)
                     if not isinstance(spread_val, list):
                         raise YPoolError('SPREAD requires an array')
                     result.extend(spread_val)
                 else:
-                    result.append(self.eval(item, env))
+                    result.append(await self.eval(item, env))
             return result
 
         if t == 'DictLiteral':
-            return {key: self.eval(val, env) for key, val in node['pairs']}
+            result = {}
+            for key, val in node['pairs']:
+                result[key] = await self.eval(val, env)
+            return result
 
         if t == 'Index':
-            obj   = self.eval(node['obj'], env)
-            index = self.eval(node['index'], env)
+            obj   = await self.eval(node['obj'], env)
+            index = await self.eval(node['index'], env)
             if isinstance(obj, list):
                 i = int(index)
                 if i < 0: i = len(obj) + i
                 if i < 0 or i >= len(obj):
                     raise YPoolError(f'Index {int(index)} out of range (length {len(obj)})')
                 return obj[i]
-            if isinstance(obj, tuple):   # namedtuples (e.g. IsoCalendarDate) and plain tuples
+            if isinstance(obj, tuple):
                 i = int(index)
                 if i < 0: i = len(obj) + i
                 return obj[i]
@@ -586,7 +596,6 @@ class Interpreter:
                 if index not in obj:
                     raise YPoolError(f'Key "{index}" not found in dict')
                 return obj[index]
-            # PyBridge wrapping a tuple/namedtuple (e.g. isocalendar result)
             if isinstance(obj, PyBridge):
                 inner = obj.module
                 if isinstance(inner, (list, tuple)):
@@ -596,13 +605,12 @@ class Interpreter:
                     return PyBridge(result, f'{obj.name}[{i}]') if _is_bridgeable(result) else result
                 if isinstance(inner, dict):
                     return inner[index]
-                # Attribute access by string key on a rich object
                 if isinstance(index, str):
                     return obj.get_attr(index)
             raise YPoolError('AT indexing requires an array, string, or dict')
 
         if t == 'DictGet':
-            obj = self.eval(node['obj'], env)
+            obj = await self.eval(node['obj'], env)
             key = node['key']
             if isinstance(obj, PyBridge):
                 return obj.get_attr(key)
@@ -615,12 +623,14 @@ class Interpreter:
         if t == 'BinOp':
             op = node['op']
             if op == 'and':
-                return self.truthy(self.eval(node['left'], env)) and self.truthy(self.eval(node['right'], env))
+                left = await self.eval(node['left'], env)
+                return self.truthy(left) and self.truthy(await self.eval(node['right'], env))
             if op == 'or':
-                return self.truthy(self.eval(node['left'], env)) or self.truthy(self.eval(node['right'], env))
+                left = await self.eval(node['left'], env)
+                return self.truthy(left) or self.truthy(await self.eval(node['right'], env))
 
-            left  = self.eval(node['left'],  env)
-            right = self.eval(node['right'], env)
+            left  = await self.eval(node['left'],  env)
+            right = await self.eval(node['right'], env)
 
             if op == '+':   return left + right
             if op == 'AND': return self._smart_add(left, right)
@@ -648,14 +658,14 @@ class Interpreter:
 
         if t == 'UnaryOp':
             op  = node['op']
-            val = self.eval(node['operand'], env)
+            val = await self.eval(node['operand'], env)
             if op == '-':   return -val
             if op == 'not': return not self.truthy(val)
             raise YPoolError(f'Unknown unary operator: {op}')
 
         if t == 'Contains':
-            left  = self.eval(node['left'],  env)
-            right = self.eval(node['right'], env)
+            left  = await self.eval(node['left'],  env)
+            right = await self.eval(node['right'], env)
             if isinstance(left, (list, str)):
                 return right in left
             if isinstance(left, dict):
@@ -663,9 +673,9 @@ class Interpreter:
             raise YPoolError('CONTAINS requires an array, string, or dict')
 
         if t == 'Between':
-            val  = self.eval(node['value'], env)
-            low  = self.eval(node['low'],   env)
-            high = self.eval(node['high'],  env)
+            val  = await self.eval(node['value'], env)
+            low  = await self.eval(node['low'],   env)
+            high = await self.eval(node['high'],  env)
             return low <= val <= high
 
         if t == 'Call':
@@ -679,38 +689,87 @@ class Interpreter:
                     fn = fn[key]
                 else:
                     raise YPoolError(f'"{node["name"]}" is not a namespace or bridge')
-            args = [self.eval(a, env) for a in node['args']]
-            return self._call(fn, args, node['name'])
+            args = []
+            for a in node['args']:
+                args.append(await self.eval(a, env))
+            return await self._call(fn, args, node['name'])
 
         if t == 'Ask':
-            prompt = self.ypool_str(self.eval(node['prompt'], env))
+            prompt = self.ypool_str(await self.eval(node['prompt'], env))
             return input(prompt + ' ')
 
         if t == 'Builtin':
-            return self._builtin(node['op'], node['args'], env)
+            return await self._builtin(node['op'], node['args'], env)
+
+        # ── async nodes ──────────────────────────────────────────────────────────
+
+        if t == 'Await':
+            val = await self.eval(node['expr'], env)
+            if isinstance(val, YPoolCoroutine):
+                return await val.coro
+            return val  # awaiting a plain value is a no-op
+
+        if t == 'AwaitAll':
+            # expr must evaluate to a list of YPoolCoroutine objects (or plain values)
+            items = await self.eval(node['expr'], env)
+            if not isinstance(items, list):
+                items = [items]
+            coros = []
+            for item in items:
+                if isinstance(item, YPoolCoroutine):
+                    coros.append(item.coro)
+                else:
+                    async def _noop(v=item):
+                        return v
+                    coros.append(_noop())
+            return list(await asyncio.gather(*coros))
+
+        if t == 'AwaitRace':
+            items = await self.eval(node['expr'], env)
+            if not isinstance(items, list):
+                items = [items]
+            coros = []
+            for item in items:
+                if isinstance(item, YPoolCoroutine):
+                    coros.append(item.coro)
+                else:
+                    async def _noop(v=item):
+                        return v
+                    coros.append(_noop())
+            tasks = [asyncio.ensure_future(c) for c in coros]
+            try:
+                done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                for p in pending:
+                    p.cancel()
+                return done.pop().result()
+            except Exception as e:
+                raise YPoolError(f'AWAIT RACE failed: {e}')
 
         raise YPoolError(f'Unknown expression type: {t}')
 
     # ── function call helper ───────────────────────────────────────────────────
 
-    def _call(self, fn, args, name='?'):
+    async def _call(self, fn, args, name='?'):
         # Partial: prepend stored args
         if isinstance(fn, YPoolPartial):
-            return self._call(fn.fn, fn.partial_args + list(args), fn.name)
+            return await self._call(fn.fn, fn.partial_args + list(args), fn.name)
 
         # Memoized: cache by repr of args
         if isinstance(fn, YPoolMemoized):
             key = repr(args)
             if key not in fn.cache:
-                fn.cache[key] = self._call(fn.fn, args, fn.name)
+                fn.cache[key] = await self._call(fn.fn, args, fn.name)
             return fn.cache[key]
 
-        # PyBridge wrapping a class or module (e.g. datetime.date) — call it
+        # PyBridge (class or module) — call it directly
         if isinstance(fn, PyBridge):
             return fn(args)
 
+        # Plain Python callable (lambda, builtin)
         if callable(fn):
             return fn(args)
+
+        # ypool function
         if isinstance(fn, YPoolFunction):
             self.call_stack.append(name)
             fn_env = Environment(fn.closure)
@@ -718,15 +777,26 @@ class Interpreter:
                 if i < len(args):
                     fn_env.define(pname, args[i])
                 elif default_node is not None:
-                    fn_env.define(pname, self.eval(default_node, fn.closure))
+                    fn_env.define(pname, await self.eval(default_node, fn.closure))
                 else:
                     fn_env.define(pname, None)
             if fn.variadic is not None:
                 fn_env.define(fn.variadic, list(args[len(fn.params):]))
             try:
                 try:
-                    self.exec_block(fn.body, fn_env)
-                    return None
+                    if fn.is_async:
+                        # Return a coroutine wrapper — don't run it yet
+                        async def _run_body():
+                            try:
+                                await self.exec_block(fn.body, fn_env)
+                                return None
+                            except ReturnSignal as r:
+                                return r.value
+                        self.call_stack.pop()
+                        return YPoolCoroutine(_run_body())
+                    else:
+                        await self.exec_block(fn.body, fn_env)
+                        return None
                 except ReturnSignal as r:
                     return r.value
                 except (ThrowSignal, YPoolError) as e:
@@ -734,19 +804,32 @@ class Interpreter:
                         e._ypool_stack = list(self.call_stack)
                     raise
             finally:
-                self.call_stack.pop()
+                if self.call_stack and self.call_stack[-1] == name:
+                    self.call_stack.pop()
+
         raise YPoolError(f'"{name}" is not a function')
 
     # ── string interpolation ───────────────────────────────────────────────────
 
-    def _interpolate(self, s, env):
-        def replacer(m):
-            name = m.group(1)
-            try:
-                return self.ypool_str(env.get(name))
-            except YPoolError:
-                return m.group(0)
-        return _re.sub(r'\{([a-zA-Z_]\w*)\}', replacer, s)
+    async def _interpolate(self, s, env):
+        result = ''
+        i = 0
+        while i < len(s):
+            if s[i] == '{':
+                j = s.find('}', i + 1)
+                if j == -1:
+                    result += s[i:]
+                    break
+                name = s[i+1:j].strip()
+                try:
+                    result += self.ypool_str(env.get(name))
+                except YPoolError:
+                    result += '{' + name + '}'
+                i = j + 1
+            else:
+                result += s[i]
+                i += 1
+        return result
 
     # ── match helper ───────────────────────────────────────────────────────────
 
@@ -762,29 +845,22 @@ class Interpreter:
     # ── module import ──────────────────────────────────────────────────────────
 
     def _resolve_path(self, path_str: str) -> str:
-        """Find a .yp file by searching multiple locations."""
-        # 1. Exact path as given
         if _os.path.isfile(path_str):
             return path_str
-        # 2. With .yp extension
         with_ext = path_str if path_str.endswith('.yp') else path_str + '.yp'
         if _os.path.isfile(with_ext):
             return with_ext
-        # 3. lib/ subdirectory (relative to CWD)
         lib_local = _os.path.join('lib', with_ext)
         if _os.path.isfile(lib_local):
             return lib_local
-        # 4. lib/ next to the interpreter script
         script_lib = _os.path.normpath(
             _os.path.join(_os.path.dirname(__file__), '..', 'lib', with_ext)
         )
         if _os.path.isfile(script_lib):
             return script_lib
-        # 5. ~/.ypool/lib/
         home_lib = _os.path.join(_os.path.expanduser('~'), '.ypool', 'lib', with_ext)
         if _os.path.isfile(home_lib):
             return home_lib
-        # 6. YPOOL_PATH environment variable (colon/semicolon-separated dirs)
         for directory in _os.environ.get('YPOOL_PATH', '').split(_os.pathsep):
             if directory:
                 candidate = _os.path.join(directory, with_ext)
@@ -792,7 +868,7 @@ class Interpreter:
                     return candidate
         raise YPoolError(f'Cannot find module "{path_str}"')
 
-    def _bring_in(self, path_str: str, env):
+    async def _bring_in(self, path_str: str, env):
         from .lexer  import Lexer
         from .parser import Parser
         resolved = self._resolve_path(path_str)
@@ -803,12 +879,14 @@ class Interpreter:
             raise YPoolError(f'Cannot import "{path_str}": {e}')
         tokens  = Lexer(source).tokenize()
         program = Parser(tokens).parse()
-        self.run(program, env)
+        await self.run(program, env)
 
     # ── builtins ───────────────────────────────────────────────────────────────
 
-    def _builtin(self, op, arg_nodes, env):
-        args = [self.eval(a, env) for a in arg_nodes]
+    async def _builtin(self, op, arg_nodes, env):
+        args = []
+        for a in arg_nodes:
+            args.append(await self.eval(a, env))
 
         if op == 'length':
             val = args[0]
@@ -846,8 +924,7 @@ class Interpreter:
         if op == 'abs':     return abs(args[0])
         if op == 'round':   return round(args[0])
 
-        if op == 'kind':
-            return self._kind_of(args[0])
+        if op == 'kind':    return self._kind_of(args[0])
 
         if op == 'keys':
             if not isinstance(args[0], dict): raise YPoolError('KEYS OF requires a dict')
@@ -864,14 +941,10 @@ class Interpreter:
             if isinstance(obj, str):   return key in obj
             raise YPoolError('HAS requires a dict, array, or string')
 
-        if op == 'random':
-            return _random.random()
-
+        if op == 'random':        return _random.random()
         if op == 'random_range':
             start, end = int(args[0]), int(args[1])
             return _random.randint(min(start, end), max(start, end))
-
-        # ── string ops ──────────────────────────────────────────────────────────
 
         if op == 'starts_with':
             s, prefix = args
@@ -902,8 +975,6 @@ class Interpreter:
             text, pattern = args
             return bool(_re.search(str(pattern), str(text)))
 
-        # ── array ops ───────────────────────────────────────────────────────────
-
         if op == 'first':
             val = args[0]
             if isinstance(val, (list, str)) and len(val) > 0:
@@ -932,33 +1003,42 @@ class Interpreter:
             arr, fn = args
             if not isinstance(arr, list): raise YPoolError('FIND requires an array')
             for item in arr:
-                if self.truthy(self._call(fn, [item], 'WHERE')):
+                if self.truthy(await self._call(fn, [item], 'WHERE')):
                     return item
             return None
 
         if op == 'find_all':
             arr, fn = args
             if not isinstance(arr, list): raise YPoolError('FIND ALL requires an array')
-            return [item for item in arr if self.truthy(self._call(fn, [item], 'WHERE'))]
+            result = []
+            for item in arr:
+                if self.truthy(await self._call(fn, [item], 'WHERE')):
+                    result.append(item)
+            return result
 
         if op == 'map':
             arr, fn = args
             if not isinstance(arr, list): raise YPoolError('MAP requires an array')
-            return [self._call(fn, [item], 'MAP') for item in arr]
+            result = []
+            for item in arr:
+                result.append(await self._call(fn, [item], 'MAP'))
+            return result
 
         if op == 'filter':
             arr, fn = args
             if not isinstance(arr, list): raise YPoolError('FILTER requires an array')
-            return [item for item in arr if self.truthy(self._call(fn, [item], 'FILTER'))]
+            result = []
+            for item in arr:
+                if self.truthy(await self._call(fn, [item], 'FILTER')):
+                    result.append(item)
+            return result
 
         if op == 'reduce':
             arr, fn, acc = args
             if not isinstance(arr, list): raise YPoolError('REDUCE requires an array')
             for item in arr:
-                acc = self._call(fn, [acc, item], 'REDUCE')
+                acc = await self._call(fn, [acc, item], 'REDUCE')
             return acc
-
-        # ── file / json / date ──────────────────────────────────────────────────
 
         if op == 'read_file':
             path = self.ypool_str(args[0])
@@ -991,13 +1071,9 @@ class Interpreter:
             except Exception as e:
                 raise YPoolError(f'Cannot serialize to JSON: {e}')
 
-        if op == 'today':
-            return str(_dt.date.today())
+        if op == 'today':  return str(_dt.date.today())
+        if op == 'now':    return _dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-        if op == 'now':
-            return _dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-        # ── math ────────────────────────────────────────────────────────────────
         if op == 'log':
             if not isinstance(args[0], (int, float)) or args[0] <= 0:
                 raise YPoolError('LOG OF requires a positive number')
@@ -1008,33 +1084,46 @@ class Interpreter:
         if op == 'pi':      return math.pi
         if op == 'e_const': return math.e
 
-        # ── dict merge ──────────────────────────────────────────────────────────
         if op == 'merge':
             a, b = args
             if not isinstance(a, dict) or not isinstance(b, dict):
                 raise YPoolError('MERGE requires two dicts')
             return {**a, **b}
 
-        # ── HTTP ────────────────────────────────────────────────────────────────
+        # ── HTTP — non-blocking via thread executor ──────────────────────────────
+
         if op == 'fetch':
             url = self.ypool_str(args[0])
+            def _do_fetch():
+                try:
+                    with _urllib_req.urlopen(url) as resp:
+                        return resp.read().decode('utf-8')
+                except _urllib_err.URLError as e:
+                    raise YPoolError(f'FETCH failed: {e}')
             try:
-                with _urllib_req.urlopen(url) as resp:
-                    return resp.read().decode('utf-8')
-            except _urllib_err.URLError as e:
+                return await asyncio.to_thread(_do_fetch)
+            except YPoolError:
+                raise
+            except Exception as e:
                 raise YPoolError(f'FETCH failed: {e}')
 
         if op == 'fetch_json':
             url = self.ypool_str(args[0])
+            def _do_fetch_json():
+                try:
+                    with _urllib_req.urlopen(url) as resp:
+                        return _json.loads(resp.read().decode('utf-8'))
+                except _urllib_err.URLError as e:
+                    raise YPoolError(f'FETCH failed: {e}')
+                except _json.JSONDecodeError as e:
+                    raise YPoolError(f'FETCH AS JSON: invalid JSON: {e}')
             try:
-                with _urllib_req.urlopen(url) as resp:
-                    return _json.loads(resp.read().decode('utf-8'))
-            except _urllib_err.URLError as e:
+                return await asyncio.to_thread(_do_fetch_json)
+            except YPoolError:
+                raise
+            except Exception as e:
                 raise YPoolError(f'FETCH failed: {e}')
-            except _json.JSONDecodeError as e:
-                raise YPoolError(f'FETCH AS JSON: invalid JSON: {e}')
 
-        # ── filesystem ──────────────────────────────────────────────────────────
         if op == 'list_files':
             path = self.ypool_str(args[0])
             try:
@@ -1045,15 +1134,11 @@ class Interpreter:
         if op == 'path_exists':
             return _os.path.exists(self.ypool_str(args[0]))
 
-        # ── environment ─────────────────────────────────────────────────────────
         if op == 'env_var':
             return _os.environ.get(self.ypool_str(args[0]))
 
-        # ── typed error ─────────────────────────────────────────────────────────
         if op == 'make_error':
             return {'type': self.ypool_str(args[0]), 'msg': self.ypool_str(args[1])}
-
-        # ── new array ops ────────────────────────────────────────────────────────
 
         if op == 'unique':
             arr = args[0]
@@ -1100,7 +1185,7 @@ class Interpreter:
             if not isinstance(arr, list): raise YPoolError('GROUP requires an array')
             result = {}
             for item in arr:
-                key = self.ypool_str(self._call(fn, [item], 'GROUP'))
+                key = self.ypool_str(await self._call(fn, [item], 'GROUP'))
                 if key not in result:
                     result[key] = []
                 result[key].append(item)
@@ -1122,6 +1207,7 @@ class Interpreter:
         if isinstance(val, str):                           return 'text'
         if isinstance(val, list):                          return 'array'
         if isinstance(val, dict):                          return 'dict'
+        if isinstance(val, YPoolCoroutine):                return 'coroutine'
         if isinstance(val, (YPoolFunction,
                             YPoolPartial,
                             YPoolMemoized)):               return 'function'
@@ -1156,12 +1242,12 @@ class Interpreter:
         if isinstance(val, dict):
             pairs = ', '.join(f'{k}: {self.ypool_str(v)}' for k, v in val.items())
             return '{' + pairs + '}'
-        if isinstance(val, YPoolFunction):  return f'<function {val.name}>'
-        if isinstance(val, YPoolPartial):   return f'<partial {val.name}>'
-        if isinstance(val, YPoolMemoized):  return f'<memoized {val.name}>'
+        if isinstance(val, YPoolCoroutine):  return '<coroutine (not yet awaited)>'
+        if isinstance(val, YPoolFunction):   return f'<{"async " if val.is_async else ""}function {val.name}>'
+        if isinstance(val, YPoolPartial):    return f'<partial {val.name}>'
+        if isinstance(val, YPoolMemoized):   return f'<memoized {val.name}>'
         if isinstance(val, PyBridge):
-            # For module/class bridges show the bridge name; for instances show their value
             if _inspect.ismodule(val.module) or _inspect.isclass(val.module):
                 return f'<bridge {val.name}>'
-            return str(val.module)   # date, datetime, timedelta, match, etc.
+            return str(val.module)
         return str(val)

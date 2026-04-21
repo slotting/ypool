@@ -38,6 +38,7 @@ you'll pick this up in minutes.
 28. [The REPL](#28-the-repl)
 29. [Full Examples](#29-full-examples)
 30. [Quick Reference Cheat Sheet](#30-quick-reference-cheat-sheet)
+31. [Async and Await](#31-async-and-await)
 
 ---
 
@@ -1933,7 +1934,7 @@ MAKE x BE ASK "prompt: "  ← read input
 YEAH  NAH  NOTHING
 "text"  42  3.14
 [1, 2, 3]  {key: value}
-KIND OF x → "text" | "number" | "bool" | "nothing" | "array" | "dict" | "function" | "bridge"
+KIND OF x → "text" | "number" | "bool" | "nothing" | "array" | "dict" | "function" | "bridge" | "coroutine"
 ```
 
 ### Arithmetic
@@ -2047,6 +2048,18 @@ CALL m GET fn WITH args    ← call bridged function
 m GET constant             ← read bridged value
 ```
 
+### Async
+
+```
+ASYNC TEACH fn USING x { GIVE BACK x }   ← async function
+MAKE coro BE CALL fn WITH val            ← build coroutine (not run yet)
+MAKE result BE AWAIT coro                ← run it and get result
+MAKE results BE AWAIT ALL coros          ← run list concurrently
+MAKE first BE AWAIT RACE coros           ← first to finish wins
+MAKE coros BE MAP list USING async_fn    ← build list of coroutines
+KIND OF coro → "coroutine"
+```
+
 ### Misc
 
 ```
@@ -2062,3 +2075,302 @@ CALL sum WITH [1,2,3]
 
 *That's everything. You now know ypool inside and out.*
 *Build something cool!*
+
+---
+
+## 31. Async and Await
+
+### What does "async" mean?
+
+Normally, ypool runs one thing at a time.
+When you `FETCH` a URL, your program pauses and waits for the response before doing anything else.
+When you call a slow function, everything else has to wait.
+
+**Async** lets you do multiple things *at the same time*.
+You can kick off five web requests together, let them all run in parallel, and collect all five results at once — instead of waiting for each one to finish before starting the next.
+
+Think of it like ordering food at a restaurant.
+A synchronous restaurant would take your order, go to the kitchen, wait for your food, bring it back, *then* take the next customer's order.
+An async restaurant takes everyone's orders first, sends them all to the kitchen at once, and brings food out as it's ready.
+
+---
+
+### The two golden rules of async
+
+1. **`ASYNC TEACH`** — marks a function as async (it can do things concurrently)
+2. **`AWAIT`** — actually runs a coroutine and waits for the result
+
+---
+
+### Step 1 — Define an async function
+
+Use `ASYNC TEACH` instead of `TEACH`:
+
+```
+ASYNC TEACH greet USING name {
+    GIVE BACK "Hello, " AND name AND "!"
+}
+```
+
+This looks exactly like a normal function — the only difference is the `ASYNC` keyword at the front.
+
+---
+
+### Step 2 — Call it (this makes a coroutine, not a result)
+
+When you `CALL` an async function, you don't get the answer back right away.
+Instead you get a **coroutine** — a "promise" that the work will be done.
+
+```
+MAKE coro BE CALL greet WITH "Alice"
+SHOW KIND OF coro    NOTE: prints "coroutine"
+SHOW coro            NOTE: prints "<coroutine (not yet awaited)>"
+```
+
+The function body hasn't run yet at this point!
+The coroutine is just a description of work waiting to happen.
+
+---
+
+### Step 3 — AWAIT it to get the real result
+
+```
+MAKE result BE AWAIT coro
+SHOW result    NOTE: prints "Hello, Alice!"
+```
+
+`AWAIT` actually runs the coroutine and gives you the value it returns.
+
+You can combine both steps on one line:
+
+```
+MAKE result BE AWAIT CALL greet WITH "Alice"
+SHOW result    NOTE: Hello, Alice!
+```
+
+---
+
+### Why bother? AWAIT ALL
+
+The real power of async is running multiple things **at the same time**.
+
+`AWAIT ALL` takes a list of coroutines and runs them all concurrently,
+then gives you back a list of all their results — in order.
+
+The best way to build that list is with `MAP` and an async function:
+
+```
+ASYNC TEACH fetch_user USING id {
+    NOTE: in a real program this would be a real HTTP call
+    GIVE BACK {id: id, name: "User" AND id, score: id * 10}
+}
+
+NOTE: MAP with an async function gives a list of coroutines
+MAKE ids BE [1, 2, 3, 4, 5]
+MAKE coros BE MAP ids USING fetch_user
+
+NOTE: run all five at once, get all five results
+MAKE users BE AWAIT ALL coros
+
+FOR EACH u IN users {
+    SHOW u GET name AND " scored " AND u GET score
+}
+```
+
+Output:
+```
+User1 scored 10
+User2 scored 20
+User3 scored 30
+User4 scored 40
+User5 scored 50
+```
+
+Without async, fetching 5 users would run them one after another.
+With `AWAIT ALL`, all 5 run at the same time — much faster when each call takes time.
+
+---
+
+### Building a coroutine list manually
+
+If you're not using MAP, assign each coroutine to a variable first,
+then put the variables in a list:
+
+```
+MAKE c1 BE CALL fetch_user WITH 1
+MAKE c2 BE CALL fetch_user WITH 2
+MAKE c3 BE CALL fetch_user WITH 3
+
+MAKE results BE AWAIT ALL [c1, c2, c3]
+```
+
+> **Important:** Don't put `CALL` expressions directly in a list literal separated by commas
+> (`[CALL fn WITH 1, CALL fn WITH 2]`) — the comma inside `CALL fn WITH 1, 2` is ambiguous
+> with the list separator. Always assign to variables first, or use `MAP`.
+
+---
+
+### AWAIT RACE — first to finish wins
+
+`AWAIT RACE` starts all the coroutines at the same time,
+but returns as soon as **any one of them** finishes. The others are cancelled.
+
+```
+ASYNC TEACH check_server USING url {
+    TRY {
+        GIVE BACK FETCH url
+    } CATCH err {
+        GIVE BACK NOTHING
+    }
+}
+
+MAKE c1 BE CALL check_server WITH "https://primary.example.com"
+MAKE c2 BE CALL check_server WITH "https://backup.example.com"
+MAKE c3 BE CALL check_server WITH "https://fallback.example.com"
+
+MAKE fastest_response BE AWAIT RACE [c1, c2, c3]
+SHOW "Got a response!"
+```
+
+This is useful for:
+- Checking multiple servers and using whichever responds first
+- Setting a timeout (race your real task against a "time's up" task)
+- Load balancing across redundant services
+
+---
+
+### Chaining async calls
+
+An async function can `AWAIT` other async functions inside it.
+This lets you build up complex pipelines:
+
+```
+ASYNC TEACH get_score USING player {
+    NOTE: imagine this does a database lookup
+    GIVE BACK LENGTH OF player * 10
+}
+
+ASYNC TEACH get_profile USING player {
+    MAKE score BE AWAIT CALL get_score WITH player
+    MAKE rank  BE IF score IS MORE THAN 45 THEN "Gold" ELSE "Silver"
+    GIVE BACK {name: player, score: score, rank: rank}
+}
+
+MAKE alice BE AWAIT CALL get_profile WITH "Alice"
+SHOW alice GET name AND " — " AND alice GET rank AND " rank, score " AND alice GET score
+NOTE: Alice — Gold rank, score 50
+```
+
+Each `AWAIT` inside an async function pauses that function and lets
+other work happen before continuing.
+
+---
+
+### Async error handling
+
+Errors inside async functions work exactly like normal error handling.
+Wrap your `AWAIT` calls in `TRY { } CATCH e { }`:
+
+```
+ASYNC TEACH safe_divide USING a, b {
+    CHECK IF b IS 0 {
+        THROW {type: "DivideByZero", msg: "cannot divide " AND a AND " by zero"}
+    }
+    GIVE BACK a / b
+}
+
+TRY {
+    MAKE result BE AWAIT CALL safe_divide WITH 10, 2
+    SHOW "10 / 2 = " AND result            NOTE: 10 / 2 = 5
+
+    MAKE bad BE AWAIT CALL safe_divide WITH 5, 0
+    SHOW "this line never runs"
+} CATCH err {
+    SHOW "Caught: " AND err GET msg        NOTE: Caught: cannot divide 5 by zero
+}
+```
+
+---
+
+### Async HTTP — the real use case
+
+`FETCH` is already non-blocking in ypool's async system.
+This means `AWAIT ALL` with `FETCH` actually runs all requests in parallel:
+
+```
+ASYNC TEACH load_post USING id {
+    MAKE url  BE "https://jsonplaceholder.typicode.com/posts/" AND id
+    TRY {
+        MAKE body BE FETCH url
+        MAKE data BE PARSE JSON body
+        GIVE BACK data GET title
+    } CATCH err {
+        GIVE BACK "(fetch failed)"
+    }
+}
+
+NOTE: fetch all three posts at the same time
+MAKE titles BE AWAIT ALL MAP [1, 2, 3] USING load_post
+
+SHOW "Post 1: " AND titles AT 0
+SHOW "Post 2: " AND titles AT 1
+SHOW "Post 3: " AND titles AT 2
+```
+
+Without async, this would make 3 requests one after another.
+With `AWAIT ALL`, all 3 requests happen simultaneously.
+The more requests you make, the bigger the speed difference.
+
+---
+
+### Async vs sync — when to use which
+
+| Situation | Use |
+|---|---|
+| Fetching one URL | Normal `FETCH` (fine either way) |
+| Fetching 5+ URLs | `ASYNC TEACH` + `AWAIT ALL MAP` |
+| Reading / writing files | Normal (files are fast locally) |
+| Calling a slow API | `ASYNC TEACH` + `AWAIT` |
+| CPU-heavy math | Normal (async won't help, it's for waiting) |
+| Trying multiple servers | `ASYNC TEACH` + `AWAIT RACE` |
+| Simple scripts | Normal (no need for async complexity) |
+
+**Rule of thumb:** If your program is waiting for something external
+(network, slow API, database), async makes it faster.
+If your program is doing calculations, async won't help.
+
+---
+
+### Quick async reference
+
+```
+NOTE: define
+ASYNC TEACH fn USING x { GIVE BACK x * 2 }
+
+NOTE: call (returns coroutine, doesn't run yet)
+MAKE task BE CALL fn WITH 5
+
+NOTE: run one coroutine
+MAKE result BE AWAIT task              NOTE: result = 10
+
+NOTE: run many at once (list of coroutines via MAP)
+MAKE coros BE MAP [1, 2, 3] USING fn
+MAKE results BE AWAIT ALL coros        NOTE: [2, 4, 6]
+
+NOTE: race — first to finish wins
+MAKE c1 BE CALL fn WITH 10
+MAKE c2 BE CALL fn WITH 20
+MAKE winner BE AWAIT RACE [c1, c2]
+
+NOTE: check what something is
+KIND OF task     NOTE: "coroutine"
+
+NOTE: async + error handling
+TRY {
+    MAKE val BE AWAIT CALL fn WITH input
+} CATCH err {
+    SHOW "Something went wrong: " AND err
+}
+```
+
+---

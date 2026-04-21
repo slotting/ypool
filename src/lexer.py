@@ -164,6 +164,10 @@ class TT(Enum):
     MEMOIZE = auto()
     # Python bridge
     BRIDGE  = auto()
+    # Async / await
+    ASYNC   = auto()
+    AWAIT   = auto()
+    RACE    = auto()
     # File / JSON / Date
     READ = auto()
     WRITE = auto()
@@ -233,6 +237,7 @@ KEYWORDS = {
     'TALLY': TT.TALLY, 'CLAMP': TT.CLAMP, 'GROUP': TT.GROUP,
     'PARTIAL': TT.PARTIAL, 'MEMOIZE': TT.MEMOIZE,
     'BRIDGE': TT.BRIDGE,
+    'ASYNC': TT.ASYNC, 'AWAIT': TT.AWAIT, 'RACE': TT.RACE,
     'READ': TT.READ, 'WRITE': TT.WRITE,
     'PARSE': TT.PARSE, 'DUMP': TT.DUMP, 'JSON': TT.JSON,
     'TODAY': TT.TODAY, 'NOW': TT.NOW,

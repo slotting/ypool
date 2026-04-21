@@ -23,12 +23,13 @@ VERSION = 'ypool 1.0'
 
 
 def _run_source(source: str, interp, filename='<inline>'):
+    import asyncio
     from src.lexer       import Lexer, YPoolError
     from src.parser      import Parser
     try:
         tokens = Lexer(source).tokenize()
         ast    = Parser(tokens).parse()
-        interp.run(ast)
+        asyncio.run(interp.run(ast))
     except YPoolError as e:
         print(e, file=sys.stderr)
         sys.exit(1)
